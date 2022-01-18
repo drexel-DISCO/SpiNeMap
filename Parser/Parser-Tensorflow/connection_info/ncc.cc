@@ -19,11 +19,14 @@ int main(int argc, char *argv[])
     std::string weight_file;
 
     if (argc == 4) {
-        weight_file = args[4];
+        weight_file = args[2];
     } else {
         weight_file = "";
     }
 
+    // for (auto& arg : args) {
+    //     std::cout << arg << "\n";
+    // }
 
     // long duration = 50;
     // char *duration_env = getenv("NCC_DURATION");

@@ -36,9 +36,10 @@ class Model
             Input, // the input layer
             Conv2D, // convolution layer
             Activation,
+            Padding,
             BatchNormalization,
             Dropout,
-            MaxPooling2D, // max polling layer
+            MaxPooling2D, // max pooling layer
             AveragePooling2D,
             Flatten, // flatten layer
             Dense, // dense (fully-connected) layer
@@ -47,6 +48,15 @@ class Model
             MAX
         }layer_type = Layer_Type::MAX;
 
+        enum class Cost : int
+        {
+            MAC         = 1,
+            DIVIDE      = 2,
+            COMPARE     = 1,
+            ADDSUB      = 1,
+            MULT        = 1,
+            MAX         = 0
+        } cost = Cost::MAX;
 
         // Lacking:
         // ZeroPadding2D, Concatenate for DenseNet
@@ -69,6 +79,10 @@ class Model
         void setStrides(std::vector<unsigned> &_strides)
         {
             strides = _strides;
+        }
+        void setKernelSize(std::vector<unsigned> &_kernel_sz)
+        {
+            kernel_sz = _kernel_sz;
         }
         void setBeta(std::vector<unsigned> &dims, std::vector<float> &data)
         {
@@ -95,7 +109,15 @@ class Model
             output_dims = _dims;
         }
         void setDepth(uint64_t _depth) { depth = _depth; }
-        int getDepth() { return depth; };
+        int getDepth() { return depth; }
+
+        typedef struct num_computations{
+            int num_MAC       = 0;
+            int num_Div       = 0;
+            int num_Compare   = 0;
+            int num_AddSub    = 0;
+            int num_Mult      = 0;
+        } Computations;
 
         std::string name; // Name of the layer
 
@@ -117,6 +139,11 @@ class Model
         }padding_type = Padding_Type::valid;
         // strides, used for CONV2D/MaxPooling/AveragePooling
         std::vector<unsigned> strides;
+        //kernel size, used for CONV2D
+        std::vector<unsigned> kernel_sz;
+        std::vector<unsigned> padding;
+        //Num filters for CONV2D
+        unsigned num_filter;
 
         // TODO, need to extract more information
         // For batch-normalization
@@ -130,8 +157,9 @@ class Model
         std::vector<float> moving_variance;
 
         // The output of the layer, including the dimension and the output neurons IDs.
-        std::vector<unsigned> output_dims; // dimension of output
+        std::vector<unsigned> output_dims = {0, 0, 0}; // dimension of output
         std::vector<uint64_t> output_neuron_ids;
+        uint64_t num_out_tok;
     };
 
     // Model - Architecture

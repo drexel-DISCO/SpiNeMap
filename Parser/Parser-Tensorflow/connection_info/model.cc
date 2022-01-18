@@ -791,7 +791,7 @@ void Model::loadArch(std::string &arch_file_path)
         unsigned layer_counter = 0;
         std::unordered_map<std::string, std::vector<std::string>> concat_input;
 
-
+        // Initial processing of layers
         for (auto& layer: json_layers) {
             if (layer_counter == 0)
             {
@@ -832,15 +832,15 @@ void Model::loadArch(std::string &arch_file_path)
 
             Layer::Layer_Type layer_type = Layer::Layer_Type::MAX;
             if (class_name == "InputLayer") { layer_type = Layer::Layer_Type::Input; }
-            else if (class_name == "Conv2D") { layer_type = Layer::Layer_Type::Conv2D; }
-            else if (class_name == "Activation") { layer_type = Layer::Layer_Type::Activation; }
+            else if (class_name == "Conv2D" || class_name == "QConv2D") { layer_type = Layer::Layer_Type::Conv2D; }
+            else if (class_name == "Activation" || class_name == "QActivation") { layer_type = Layer::Layer_Type::Activation; }
             else if (class_name == "BatchNormalization") {layer_type = Layer::Layer_Type::BatchNormalization; }
             else if (class_name == "Dropout") { layer_type = Layer::Layer_Type::Dropout; }
             else if (class_name == "MaxPooling2D") { layer_type = Layer::Layer_Type::MaxPooling2D; }
             else if (class_name == "AveragePooling2D") { layer_type = Layer::Layer_Type::AveragePooling2D; }
             else if (class_name == "Flatten") { layer_type = Layer::Layer_Type::Flatten; }
             else if (class_name == "Dense") { layer_type = Layer::Layer_Type::Dense; }
-            else if (class_name == "ZeroPadding2D") {layer_type = Layer::Layer_Type::Ignore; }
+            else if (class_name == "ZeroPadding2D") {layer_type = Layer::Layer_Type::Padding; }
             else if (class_name == "Concatenate") {layer_type = Layer::Layer_Type::Concatenate; }
            // else { std::cerr << "Error: Unsupported layer type.\n"; exit(0); }
 
@@ -855,7 +855,8 @@ void Model::loadArch(std::string &arch_file_path)
                 arch.getLayer(default_name).name = name; // When input is explicitly mentioned.
             }
 
-            if (class_name == "Conv2D" || class_name == "MaxPooling2D" || class_name == "AveragePooling2D")
+            if (class_name == "Conv2D" || class_name == "MaxPooling2D" || 
+                class_name == "AveragePooling2D" || class_name == "QConv2D")
             {
                 // get padding type
                 std::string padding_type = layer["config"]["padding"];
@@ -873,6 +874,16 @@ void Model::loadArch(std::string &arch_file_path)
                 arch.getLayer(name).setStrides(strides);
             }
 
+            if (class_name == "Conv2D" || class_name == "QConv2D") { 
+                //get kernel size information
+                std::vector<unsigned> kernel_size;
+                for (auto &dim : layer["config"]["kernel_size"]) {
+                    kernel_size.push_back(dim);
+                }
+                arch.getLayer(name).setKernelSize(kernel_size);
+                arch.getLayer(name).num_filter = layer["config"]["filters"];
+            }
+
             if (class_name == "MaxPooling2D" || class_name == "AveragePooling2D")
             {
                 // We need pool_size since Conv2D's kernel size can be extracted from h5 file
@@ -882,6 +893,28 @@ void Model::loadArch(std::string &arch_file_path)
                     pool_size.push_back(cell);
                 }
                 pool_size.push_back(1); // depth is 1
+
+                //purely for the sdf representation
+                std::vector<unsigned> kernel_size;
+                for (auto &dim : layer["config"]["pool_size"]) {
+                    kernel_size.push_back(dim);
+                }
+                arch.getLayer(name).setKernelSize(kernel_size);
+            }
+
+            if (class_name == "ZeroPadding2D")
+            {
+                auto &padding= arch.getLayer(name).padding;
+                int pad_pix_per_dim = 0;
+                for (auto pad_dims : layer["config"]["padding"]) {
+                    for (int num_pad_pix : pad_dims) {
+                       // for (int num_pad_pix : dim) {
+                            pad_pix_per_dim += num_pad_pix;
+                        //}
+                    }
+                    padding.push_back(pad_pix_per_dim);
+                    pad_pix_per_dim = 0;
+                }
             }
 
             if (class_name == "Concatenate") {
@@ -914,6 +947,7 @@ void Model::loadArch(std::string &arch_file_path)
             // TODO, more information to extract, such as activation method...
         }
 
+        // Processing layers' connectivity
         for (auto& layer: json_layers) {
             std::string layer_name = layer["name"];
             
@@ -945,6 +979,52 @@ void Model::loadArch(std::string &arch_file_path)
             }
         }
 
+        //Processing layers' sdf representation
+        int i = 0;
+        for (auto& layer: json_layers) {
+            std::string layer_name = layer["name"];
+            auto& layer_obj = arch.getLayer(layer_name);
+            std::vector<unsigned>& output_dims = layer_obj.output_dims;
+            auto& inputLayers = layer_obj.inbound_layers;
+            for (auto& inLayer : inputLayers)
+            {
+                //All input layers should have the same output_dims[0, 1]
+                output_dims[0] = arch.getLayer(inLayer).output_dims[0]; 
+                output_dims[1] = arch.getLayer(inLayer).output_dims[1];
+                output_dims[2] += arch.getLayer(inLayer).output_dims[2];
+            }
+
+            if (layer_obj.layer_type == Layer::Layer_Type::Padding){
+                int i = 0;
+                for (auto pad_dim : layer_obj.padding) {
+                        output_dims[i] += pad_dim;
+                    i++;
+                }
+            } else if (layer_obj.layer_type == Layer::Layer_Type::Conv2D ||
+                    layer_obj.layer_type == Layer::Layer_Type::MaxPooling2D ||
+                    layer_obj.layer_type == Layer::Layer_Type::AveragePooling2D) {
+                for (int i=0; i < 2; i++) {
+                    int k = layer_obj.kernel_sz[i];
+                    int s = layer_obj.strides[i];
+                    if (layer_obj.padding_type == Layer::Padding_Type::valid)
+                        output_dims[i] = (float)((float)output_dims[i] - (float)k)/(float)s + 1;
+                    else //layer_obj.padding_type == Layer::Padding_Type::same
+                        output_dims[i] = ceil((float)output_dims[i]/(float)s);
+                }
+
+                if (layer_obj.layer_type == Layer::Layer_Type::Conv2D)
+                    output_dims[2] = layer_obj.num_filter;
+
+            } else if (layer_obj.layer_type == Layer::Layer_Type::BatchNormalization ||
+                    layer_obj.layer_type == Layer::Layer_Type::Activation) {
+                
+            }
+            // } else if (layer_obj.layer_type == Layer::Layer_Type::MaxPooling2D ||
+            //         layer_obj.layer_type == Layer::Layer_Type::AveragePooling2D) {
+                
+            // }
+            i++;
+        }
     }
     catch (std::exception const& e)
     {
@@ -970,6 +1050,46 @@ void Model::Architecture::printLayerConns(std::string &out_root) {
             conns_out << "\n";
         }
     } 
+
+    std::string layer_outshape_txt = out_root + ".layer_outputshape_info.txt";
+    std::ofstream out_shape_f(layer_outshape_txt);
+    
+    for (int i = 0; i < layers.size() - 1; i++) 
+    {
+        auto name = layers[i].name;
+        auto type = layers[i].layer_type;
+
+        out_shape_f << "Layer name: " << name << "; ";
+        if (type == Layer::Layer_Type::Input) 
+        { out_shape_f << "Layer type: Input"; }
+        else if (type == Layer::Layer_Type::Conv2D) 
+        { out_shape_f << "Layer type: Conv2D"; }
+        else if (type == Layer::Layer_Type::Activation) 
+        { out_shape_f << "Layer type: Activation"; }
+        else if (type == Layer::Layer_Type::BatchNormalization) 
+        { out_shape_f << "Layer type: BatchNormalization"; }
+        else if (type == Layer::Layer_Type::Dropout) 
+        { out_shape_f << "Layer type: Dropout"; }
+        else if (type == Layer::Layer_Type::MaxPooling2D) 
+        { out_shape_f << "Layer type: MaxPooling2D"; }
+        else if (type == Layer::Layer_Type::AveragePooling2D) 
+        { out_shape_f << "Layer type: AveragePooling2D"; }
+        else if (type == Layer::Layer_Type::Flatten) 
+        { out_shape_f << "Layer type: Flatten"; }
+        else if (type == Layer::Layer_Type::Dense) 
+        { out_shape_f << "Layer type: Dense"; }
+        else if (type == Layer::Layer_Type::Padding) 
+        { out_shape_f << "Layer type: Padding"; }
+        else if (type == Layer::Layer_Type::Concatenate) 
+        { out_shape_f << "Layer type: Concatenate"; }
+        else { std::cerr << "Error: unsupported layer type\n"; exit(0); }
+        out_shape_f << "\n";
+
+        auto &output_dims = layers[i].output_dims;
+        out_shape_f << "Output shape: ";
+        for (auto dim : output_dims) { out_shape_f << dim << " "; }
+        out_shape_f << "\n\n";
+    }
 }
 
 void Model::Architecture::labelLayerWithDepth(uint64_t starting_depth, std::set<std::string>& indepth) {
@@ -1040,24 +1160,6 @@ std::pair<uint64_t, uint64_t> Model::Architecture::getIrregularMetric() {
     return returnVal;
 }
 
-//Recursive function to unroll concat layers -- too much execution time
-// std::vector<std::string> unrollConcat(std::string name) {
-//     std::vector<std::string> in_names;
-//     bool last_concat = false;
-//     std::size_t found = name.find("concat");
-//     if (found != std::string::npos) {
-//         for (auto& in : arch.getLayer(name).inbound_layers) {
-//             std::vector<std::string> unroll_ins = unrollConcat(in.name));
-//             for (auto &in_layer_name: unroll_ins) {
-//                 in_names.push_back(in_layer_name);
-//             }
-//         }
-//     } else {
-//         in_names.push_back(name);
-//     }
-//     return in_names;
-// } //Not tested -idea only
-
 
 //load arch using propertyTree instead of json lib
 void Model::loadArch2(std::string &arch_file)
@@ -1120,8 +1222,8 @@ void Model::loadArch2(std::string &arch_file)
             else if (class_name == "AveragePooling2D") { layer_type = Layer::Layer_Type::AveragePooling2D; }
             else if (class_name == "Flatten") { layer_type = Layer::Layer_Type::Flatten; }
             else if (class_name == "Dense") { layer_type = Layer::Layer_Type::Dense; }
-            else if (class_name == "ZeroPadding2D") {layer_type = Layer::Layer_Type::Ignore; }
-            else if (class_name == "Concatenate") {layer_type = Layer::Layer_Type::Ignore; }
+            else if (class_name == "ZeroPadding2D") {layer_type = Layer::Layer_Type::Padding; }
+            else if (class_name == "Concatenate") {layer_type = Layer::Layer_Type::Concatenate; }
            // else { std::cerr << "Error: Unsupported layer type.\n"; exit(0); }
 
             if (class_name != "InputLayer")
