@@ -58,8 +58,9 @@ int main(int argc, char *argv[])
         std::cout << "outputting layer connection stats\n";
         std::string out_root = arch_file.substr(0, arch_file.find(".json"));
         std::string outputIRFile = out_root + ".layer_depth.txt";
-        model.printLayerConns(out_root);
-        model.outputLayerDepthIR(outputIRFile);
+        model.printSdfRep(out_root);
+        //model.printLayerConns(out_root);
+        //model.outputLayerDepthIR(outputIRFile);
         std::pair<uint64_t, uint64_t> irr_metric = model.getIrregularMetric();
         uint64_t metric = std::get<0>(irr_metric);
         uint64_t num_connections = std::get<1>(irr_metric);

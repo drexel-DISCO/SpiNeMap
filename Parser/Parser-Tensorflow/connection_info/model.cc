@@ -19,6 +19,7 @@ namespace NCC_FrontEnd
 
 using json = nlohmann::json;
 
+
 void Model::Architecture::connectLayers() 
 {
     int prev = 0;
@@ -667,7 +668,6 @@ void Model::Architecture::setOutRoot(std::string &out_root)
     weights_output.open(weights_out_txt);
 }
 
-// TODO, we may need to break down the protobuf into multiple smaller files.
 void Model::Architecture::printConns(std::string &out_root)
 {
     // Txt record
@@ -702,81 +702,6 @@ void Model::Architecture::printConns(std::string &out_root)
     }
     weights_out.close();
     conns_out.close();
-
-    /*
-    // Protobuf record
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-    NCC_Graph_Proto::Graph graph;
-    NCC_Graph_Proto::Node *node;
-
-    boost::filesystem::path graph_root = out_root + ".graph";
-    if (boost::filesystem::exists(graph_root))
-    {
-        std::cerr << "Error: graph already directory exists. \n";
-        exit(0);
-    }
-    boost::filesystem::create_directory(graph_root);
-
-    unsigned num_in_neurons_per_sub_graph = 1000;
-    unsigned sub_graph_idx = 0;
-    boost::filesystem::path sub_graph = std::to_string(sub_graph_idx) + ".graph";
-    boost::filesystem::path sub_graph_full = graph_root / sub_graph;
-
-    unsigned neurons_count = 0;
-    for (int i = 0; i < layers.size() - 1; i++)
-    {
-        auto &output_neurons = layers[i].output_neuron_ids;
-
-        for (auto neuron : output_neurons)
-        {
-            auto iter = connections.find(neuron);
-            if (iter == connections.end()) { continue; }
-            node = graph.add_nodes();
-            node->set_id(neuron);
-            node->set_type(NCC_Graph_Proto::Node::IO); 
-
-            auto &out_neurons_ids = (*iter).second.out_neurons_ids;
-            auto &weights = (*iter).second.weights;
-
-            for (unsigned j = 0; j < out_neurons_ids.size(); j++)
-            {
-                node->add_adjs(out_neurons_ids[j]);
-                node->add_weights(weights[j]);
-            }
-            
-            if (++neurons_count >= num_in_neurons_per_sub_graph)
-            {
-                neurons_count = 0;
-                std::ofstream out(sub_graph_full.string());
-                if (!graph.SerializeToOstream(&out))
-                {
-                    std::cerr << "Failed to graph." << std::endl;
-                    exit(0);
-                }
-                out.close();
-
-                // Start a new message
-                sub_graph_idx++;
-                sub_graph = std::to_string(sub_graph_idx) + ".graph";
-                sub_graph_full = graph_root / sub_graph;
-                graph.Clear();
-            }
-        }
-    }
-    
-    if (neurons_count)
-    {
-        std::ofstream out(sub_graph_full.string());
-        if (!graph.SerializeToOstream(&out))
-        {
-            std::cerr << "Failed to graph." << std::endl;
-            exit(0);
-        }
-        out.close();
-    }
-    
-    google::protobuf::ShutdownProtobufLibrary();
-    */
 }
 
 void Model::loadArch(std::string &arch_file_path)
@@ -810,19 +735,6 @@ void Model::loadArch(std::string &arch_file_path)
                 arch.addLayer(name, layer_type);
                 arch.getLayer(name).setOutputDim(output_dims);
 
-                // auto &out_neuro_ids = arch.getLayer(name).output_neuron_ids;
-                // for (int k = 0; k < output_dims[2]; k++)
-                // {
-                //     for (int i = 0; i < output_dims[0]; i++)
-                //     {
-                //         for (int j = 0; j < output_dims[1]; j++)
-                //         {
-                //             out_neuro_ids.push_back(k * output_dims[0] * output_dims[1] + 
-                //                                     i * output_dims[1] + j);
-                //         }
-                //     }
-                // }
-
                 layer_counter++;
             }
 
@@ -839,9 +751,11 @@ void Model::loadArch(std::string &arch_file_path)
             else if (class_name == "MaxPooling2D") { layer_type = Layer::Layer_Type::MaxPooling2D; }
             else if (class_name == "AveragePooling2D") { layer_type = Layer::Layer_Type::AveragePooling2D; }
             else if (class_name == "Flatten") { layer_type = Layer::Layer_Type::Flatten; }
-            else if (class_name == "Dense") { layer_type = Layer::Layer_Type::Dense; }
+            else if (class_name == "Dense" || class_name == "QDense") { layer_type = Layer::Layer_Type::Dense; }
             else if (class_name == "ZeroPadding2D") {layer_type = Layer::Layer_Type::Padding; }
             else if (class_name == "Concatenate") {layer_type = Layer::Layer_Type::Concatenate; }
+            else if (class_name == "GlobalAveragePooling2D" || class_name == "GlobalMaxPooling2D")
+            {layer_type = Layer::Layer_Type::GlobalPooling2D;}
            // else { std::cerr << "Error: Unsupported layer type.\n"; exit(0); }
 
             if (class_name != "InputLayer")
@@ -980,50 +894,136 @@ void Model::loadArch(std::string &arch_file_path)
         }
 
         //Processing layers' sdf representation
-        int i = 0;
-        for (auto& layer: json_layers) {
+        for (auto& layer: json_layers) 
+        {
             std::string layer_name = layer["name"];
             auto& layer_obj = arch.getLayer(layer_name);
             std::vector<unsigned>& output_dims = layer_obj.output_dims;
-            auto& inputLayers = layer_obj.inbound_layers;
-            for (auto& inLayer : inputLayers)
+            std::vector<unsigned> input_dims(3, 0);
+
+            if (layer_obj.layer_type == Layer::Layer_Type::Input)
             {
-                //All input layers should have the same output_dims[0, 1]
-                output_dims[0] = arch.getLayer(inLayer).output_dims[0]; 
-                output_dims[1] = arch.getLayer(inLayer).output_dims[1];
-                output_dims[2] += arch.getLayer(inLayer).output_dims[2];
+                input_dims = layer_obj.output_dims;
+            } 
+            else
+            {
+                auto& inputLayers = layer_obj.inbound_layers;
+                for (auto& inLayer : inputLayers)
+                {
+                    //All input layers should have the same output_dims[0, 1]
+                    input_dims[0] = arch.getLayer(inLayer).output_dims[0]; 
+                    input_dims[1] = arch.getLayer(inLayer).output_dims[1];
+                    input_dims[2] += arch.getLayer(inLayer).output_dims[2];               
+                }
+                output_dims = input_dims;
             }
 
-            if (layer_obj.layer_type == Layer::Layer_Type::Padding){
+            if (layer_obj.layer_type == Layer::Layer_Type::Padding)
+            {    
                 int i = 0;
-                for (auto pad_dim : layer_obj.padding) {
-                        output_dims[i] += pad_dim;
+                
+                for (auto pad_dim : layer_obj.padding) 
+                {
+                    output_dims[i] += pad_dim;
+                    layer_obj.comp.num_Init += pad_dim;
                     i++;
                 }
-            } else if (layer_obj.layer_type == Layer::Layer_Type::Conv2D ||
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::Conv2D ||
                     layer_obj.layer_type == Layer::Layer_Type::MaxPooling2D ||
-                    layer_obj.layer_type == Layer::Layer_Type::AveragePooling2D) {
+                    layer_obj.layer_type == Layer::Layer_Type::AveragePooling2D)
+            {
                 for (int i=0; i < 2; i++) {
                     int k = layer_obj.kernel_sz[i];
                     int s = layer_obj.strides[i];
                     if (layer_obj.padding_type == Layer::Padding_Type::valid)
                         output_dims[i] = (float)((float)output_dims[i] - (float)k)/(float)s + 1;
-                    else //layer_obj.padding_type == Layer::Padding_Type::same
+                    else 
+                        //layer_obj.padding_type == Layer::Padding_Type::same
                         output_dims[i] = ceil((float)output_dims[i]/(float)s);
                 }
 
-                if (layer_obj.layer_type == Layer::Layer_Type::Conv2D)
+                if (layer_obj.layer_type == Layer::Layer_Type::Conv2D) 
+                {
                     output_dims[2] = layer_obj.num_filter;
+                    layer_obj.comp.num_MAC =  output_dims[2]              // n
+                                            * input_dims[2]               // m
+                                            * layer_obj.kernel_sz[0] 
+                                            * layer_obj.kernel_sz[1]      // k^2
+                                            * output_dims[0]              // new w
+                                            * output_dims[1];             // new h 
+                } 
+                else 
+                { // layer is Pooling2D
+                    if (layer_obj.layer_type == Layer::Layer_Type::MaxPooling2D) 
+                    {
+                        layer_obj.comp.num_Compare =  output_dims[2]             // n
+                                            * (layer_obj.kernel_sz[0] 
+                                                * layer_obj.kernel_sz[1] - 1)  // k^2 -1
+                                            * output_dims[0]                 // new w
+                                            * output_dims[1];                // new h 
+                    }
+                    else if (layer_obj.layer_type == Layer::Layer_Type::AveragePooling2D) 
+                    {
+                        layer_obj.comp.num_AddSub =  output_dims[2]             // n
+                                            * (layer_obj.kernel_sz[0] 
+                                                * layer_obj.kernel_sz[1] - 1) // k^2 -1
+                                            * output_dims[0]                 // new w
+                                            * output_dims[1]                // new h
+                                            +  1;           // (optional) Calculate kernel sz
+                        
+                        layer_obj.comp.num_Div =  output_dims[2]             // n
+                                            * output_dims[0]                 // new w
+                                            * output_dims[1];                // new h 
+                    }
+                }
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::BatchNormalization) 
+            {
+                // Compute gamma*(x - moving_mean)/(moving_variance + epsilon) + beta
+                // moving mean, gamma, beta, (moving_variance + epsilon) are constant during inference
+                uint64_t num_input = input_dims[0]*input_dims[1]*input_dims[2];
 
-            } else if (layer_obj.layer_type == Layer::Layer_Type::BatchNormalization ||
-                    layer_obj.layer_type == Layer::Layer_Type::Activation) {
-                
+                layer_obj.comp.num_AddSub = num_input*2;                
+                layer_obj.comp.num_Mult = num_input;
+                layer_obj.comp.num_Div = num_input*1;
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::Activation)
+            {
+                //Assuming Activation used is relu = 1 compare with 0 per element
+                layer_obj.comp.num_Compare = input_dims[0]*input_dims[1]*input_dims[2];
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::GlobalPooling2D) 
+            {
+                if (layer["class_name"] == "GlobalAveragePooling2D") {
+                    layer_obj.comp.num_AddSub = (input_dims[0] * input_dims[1] - 1)
+                                                * input_dims[2];     
+                    //Each feature map (wxh pix) requires (wxh -1) 
+
+                    layer_obj.comp.num_Div = input_dims[2];              
+                }
+                output_dims = {1, 1, input_dims[2]};
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::Dense) 
+            {
+                unsigned units = layer["config"]["units"];
+                layer_obj.comp.num_MAC = input_dims[2] * units;
+                output_dims = {1, 1, units};
             }
-            // } else if (layer_obj.layer_type == Layer::Layer_Type::MaxPooling2D ||
-            //         layer_obj.layer_type == Layer::Layer_Type::AveragePooling2D) {
-                
-            // }
-            i++;
+            else if (layer_obj.layer_type == Layer::Layer_Type::Flatten)
+            {
+                output_dims = {1, 1, input_dims[0]*input_dims[1]*input_dims[2]};
+                layer_obj.comp.num_Init = input_dims[0]*input_dims[1]*input_dims[2];
+            }
+
+            layer_obj.num_out_tok = output_dims[0]*output_dims[1]*output_dims[2];
+            layer_obj.compute_time =  layer_obj.comp.num_AddSub  * Layer::Cost::ADDSUB 
+                                    + layer_obj.comp.num_MAC     * Layer::Cost::MAC
+                                    + layer_obj.comp.num_Compare * Layer::Cost::COMPARE
+                                    + layer_obj.comp.num_Div     * Layer::Cost::DIVIDE
+                                    + layer_obj.comp.num_Init    * Layer::Cost::INIT
+                                    + layer_obj.comp.num_Mult    * Layer::Cost::MULT;
+
         }
     }
     catch (std::exception const& e)
@@ -1035,6 +1035,26 @@ void Model::loadArch(std::string &arch_file_path)
     std::set<std::string> temp = {};
     arch.labelLayerWithDepth(0, temp);  
 }
+
+void Model::Architecture::printSdfRep(std::string &out_root) {
+    std::string layer_conn_out_txt = out_root + ".sdf_rep.txt";
+    std::ofstream conns_out(layer_conn_out_txt);
+
+    for (int i = 0; i < layers.size() - 1; i++) 
+    {
+        if (layers[i].layer_type != Layer::Layer_Type::Concatenate) 
+        {
+            for (auto& out_layer: layers[i].outbound_layers) 
+            {
+                conns_out << layers[i].name << " " 
+                          << out_layer << " " 
+                          << layers[i].num_out_tok
+                          << "\n";
+            } 
+        }
+    } 
+}
+
 
 void Model::Architecture::printLayerConns(std::string &out_root) {
     std::string layer_conn_out_txt = out_root + ".layer_connection_info.txt";
@@ -1074,6 +1094,8 @@ void Model::Architecture::printLayerConns(std::string &out_root) {
         { out_shape_f << "Layer type: MaxPooling2D"; }
         else if (type == Layer::Layer_Type::AveragePooling2D) 
         { out_shape_f << "Layer type: AveragePooling2D"; }
+        else if (type == Layer::Layer_Type::GlobalPooling2D) 
+        { out_shape_f << "Layer type: GlobalPooling2D"; }
         else if (type == Layer::Layer_Type::Flatten) 
         { out_shape_f << "Layer type: Flatten"; }
         else if (type == Layer::Layer_Type::Dense) 
@@ -1088,7 +1110,7 @@ void Model::Architecture::printLayerConns(std::string &out_root) {
         auto &output_dims = layers[i].output_dims;
         out_shape_f << "Output shape: ";
         for (auto dim : output_dims) { out_shape_f << dim << " "; }
-        out_shape_f << "\n\n";
+        out_shape_f << "; Num compute cycle: " << layers[i].compute_time << "\n\n";
     }
 }
 
@@ -1160,147 +1182,6 @@ std::pair<uint64_t, uint64_t> Model::Architecture::getIrregularMetric() {
     return returnVal;
 }
 
-
-//load arch using propertyTree instead of json lib
-void Model::loadArch2(std::string &arch_file)
-{
-    try
-    {
-        boost::property_tree::ptree pt;
-        boost::property_tree::read_json(arch_file, pt);
-
-        unsigned layer_counter = 0;
-        // Iterate through the layers
-        BOOST_FOREACH(boost::property_tree::ptree::value_type &v, pt.get_child("config.layers"))
-        {
-            // We need to construct the input layer first
-            // Sometimes, input layer is not explicitly specified. When the input layer is explicitly specified, 
-            // we will change its name later.
-            if (layer_counter == 0)
-            {
-                std::vector<std::string> input_shape;
-                std::vector<unsigned> output_dims;
-                for (boost::property_tree::ptree::value_type &cell : v.second.get_child("config.batch_input_shape"))
-                {
-                    input_shape.push_back(cell.second.get_value<std::string>());
-                }
-
-                input_shape.erase(input_shape.begin()); //Delete the first null (see json for more details)
-                for (auto dim : input_shape) { output_dims.push_back(stoll(dim)); }
-
-                std::string name = "input";
-                Layer::Layer_Type layer_type = Layer::Layer_Type::Input;
-                arch.addLayer(name, layer_type);
-                arch.getLayer(name).setOutputDim(output_dims);
-
-                auto &out_neuro_ids = arch.getLayer(name).output_neuron_ids;
-                for (int k = 0; k < output_dims[2]; k++)
-                {
-                    for (int i = 0; i < output_dims[0]; i++)
-                    {
-                        for (int j = 0; j < output_dims[1]; j++)
-                        {
-                            out_neuro_ids.push_back(k * output_dims[0] * output_dims[1] + 
-                                                    i * output_dims[1] + j);
-                        }
-                    }
-                }
-
-                layer_counter++;
-            }
-
-            std::string class_name = v.second.get<std::string>("class_name");
-            std::string name = v.second.get<std::string>("config.name");
-
-            Layer::Layer_Type layer_type = Layer::Layer_Type::MAX;
-            if (class_name == "InputLayer") { layer_type = Layer::Layer_Type::Input; }
-            else if (class_name == "Conv2D") { layer_type = Layer::Layer_Type::Conv2D; }
-            else if (class_name == "Activation") { layer_type = Layer::Layer_Type::Activation; }
-            else if (class_name == "BatchNormalization") {layer_type = Layer::Layer_Type::BatchNormalization; }
-            else if (class_name == "Dropout") { layer_type = Layer::Layer_Type::Dropout; }
-            else if (class_name == "MaxPooling2D") { layer_type = Layer::Layer_Type::MaxPooling2D; }
-            else if (class_name == "AveragePooling2D") { layer_type = Layer::Layer_Type::AveragePooling2D; }
-            else if (class_name == "Flatten") { layer_type = Layer::Layer_Type::Flatten; }
-            else if (class_name == "Dense") { layer_type = Layer::Layer_Type::Dense; }
-            else if (class_name == "ZeroPadding2D") {layer_type = Layer::Layer_Type::Padding; }
-            else if (class_name == "Concatenate") {layer_type = Layer::Layer_Type::Concatenate; }
-           // else { std::cerr << "Error: Unsupported layer type.\n"; exit(0); }
-
-            if (class_name != "InputLayer")
-            {
-                arch.addLayer(name, layer_type);
-            }
-            else if (class_name == "InputLayer")
-            {
-                // The input layer is explicitly specified, we need to change its name here.
-                std::string default_name = "input";
-                arch.getLayer(default_name).name = name; // When input is explicitly mentioned.
-            }
-
-            if (class_name == "Conv2D" || class_name == "MaxPooling2D" || class_name == "AveragePooling2D")
-            {
-                // get padding type
-                std::string padding_type = v.second.get<std::string>("config.padding");
-                if (padding_type == "same")
-                {
-                    arch.getLayer(name).padding_type = Layer::Padding_Type::same;
-                }
-
-                // get strides information
-                std::vector<std::string> strides_str;
-                std::vector<unsigned> strides;
-                for (boost::property_tree::ptree::value_type &cell : v.second.get_child("config.strides"))
-                {
-                    strides_str.push_back(cell.second.get_value<std::string>());
-                }
-  
-                for (auto stride : strides_str) { strides.push_back(stoll(stride)); }
-                arch.getLayer(name).setStrides(strides);
-            }
-
-            if (class_name == "MaxPooling2D" || class_name == "AveragePooling2D")
-            {
-                // We need pool_size since Conv2D's kernel size can be extracted from h5 file
-                std::vector<std::string> pool_size_str;
-                auto &pool_size = arch.getLayer(name).w_dims;
-                for (boost::property_tree::ptree::value_type &cell : v.second.get_child("config.pool_size"))
-                {
-                    pool_size_str.push_back(cell.second.get_value<std::string>());
-                }
-
-                for (auto size : pool_size_str) { pool_size.push_back(stoll(size)); }
-                pool_size.push_back(1); // depth is 1
-            }
-
-            // TODO, more information to extract, such as activation method...
-
-            layer_counter++;
-        }
-
-        // Iterate through the layers
-        BOOST_FOREACH(boost::property_tree::ptree::value_type &v, pt.get_child("config.layers"))
-        {
-            std::string class_name = v.second.get<std::string>("class_name");
-            std::string name = v.second.get<std::string>("config.name");
-            std::vector<std::string> _inbound_layers;
-
-            //std::cout << name << " ";
-            for (boost::property_tree::ptree::value_type &item : v.second.get_child("inbound_nodes"))
-            {
-                //std::cout << item.second.get_value<std::string>() << " ";
-                for (boost::property_tree::ptree::value_type &layer_info : item.second.get_child("0")) {
-                   _inbound_layers.push_back(layer_info.second.get_value<std::string>());
-                    std::cout << layer_info.second.get_value<std::string>() << " ";
-                }
-            }
-        }
-    }
-    catch (std::exception const& e)
-    {
-        std::cerr << e.what() << std::endl;
-        exit(0);
-    }
-}
 
 void Model::loadWeights(std::string &weight_file)
 {

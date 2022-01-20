@@ -41,6 +41,7 @@ class Model
             Dropout,
             MaxPooling2D, // max pooling layer
             AveragePooling2D,
+            GlobalPooling2D,
             Flatten, // flatten layer
             Dense, // dense (fully-connected) layer
             Ignore,
@@ -48,13 +49,14 @@ class Model
             MAX
         }layer_type = Layer_Type::MAX;
 
-        enum class Cost : int
+        enum Cost : int
         {
             MAC         = 1,
             DIVIDE      = 2,
             COMPARE     = 1,
             ADDSUB      = 1,
-            MULT        = 1,
+            MULT        = 2,
+            INIT        = 1, //For Padding layers
             MAX         = 0
         } cost = Cost::MAX;
 
@@ -111,13 +113,14 @@ class Model
         void setDepth(uint64_t _depth) { depth = _depth; }
         int getDepth() { return depth; }
 
-        typedef struct num_computations{
+        struct Computations{
             int num_MAC       = 0;
             int num_Div       = 0;
             int num_Compare   = 0;
             int num_AddSub    = 0;
             int num_Mult      = 0;
-        } Computations;
+            int num_Init      = 0;
+        } comp;
 
         std::string name; // Name of the layer
 
@@ -159,7 +162,8 @@ class Model
         // The output of the layer, including the dimension and the output neurons IDs.
         std::vector<unsigned> output_dims = {0, 0, 0}; // dimension of output
         std::vector<uint64_t> output_neuron_ids;
-        uint64_t num_out_tok;
+        uint64_t num_out_tok; // For sdf representation
+        uint64_t compute_time=0; //For sdf repre
     };
 
     // Model - Architecture
@@ -220,6 +224,7 @@ class Model
 
         void printConns(std::string &out_root);
         void printLayerConns(std::string &out_root);
+        void printSdfRep(std::string &out_root);
 
         void setOutRoot(std::string &out_root);
 
@@ -361,6 +366,7 @@ class Model
     void connector() { arch.connector(); } 
 
     void printConns(std::string &out_root) { arch.printConns(out_root); }
+    void printSdfRep(std::string &out_root) {arch.printSdfRep(out_root); }
     void printLayerConns(std::string &out_root) {arch.printLayerConns(out_root); }
     void outputLayerDepthIR(std::string &out_file) {arch.outputLayerDepthIR(out_file);}
     std::pair<uint64_t, uint64_t> getIrregularMetric() { return arch.getIrregularMetric();}
