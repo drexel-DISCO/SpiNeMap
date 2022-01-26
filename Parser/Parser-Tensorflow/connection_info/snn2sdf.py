@@ -127,9 +127,9 @@ count = 0
 f = open(connection_file,"r")
 for line in f:
     line_array  = line.strip().split()
-    source      = int(line_array[0])
-    destination = int(line_array[1])
-    tokens      = int(line_array[2])
+    source      = str(line_array[0])
+    destination = str(line_array[1])
+    tokens      = str(line_array[2])
 
     #Fill for the source actor
     coord_src_actor = get_actor_coord(actors,source)
