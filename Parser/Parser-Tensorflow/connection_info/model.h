@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <utility>      // std::pair
 #include <vector>
+#include <set>
 
 #include "hdf5.h"
 
@@ -42,10 +43,13 @@ class Model
             MaxPooling2D, // max pooling layer
             AveragePooling2D,
             GlobalPooling2D,
+            GlobalAveragePooling2D,
             Flatten, // flatten layer
             Dense, // dense (fully-connected) layer
             Ignore,
             Concatenate,
+            Add,
+            ZeroPadding2D,
             MAX
         }layer_type = Layer_Type::MAX;
 
@@ -194,6 +198,7 @@ class Model
         void connToPool(unsigned, unsigned);
         void connToFlat(unsigned, unsigned);
         void connToDense(unsigned, unsigned);
+        void connToAdd(unsigned, unsigned);
 
         void layerOutput();
 
@@ -213,9 +218,9 @@ class Model
             for (auto &layer : layers)
             {
                 if (layer.name == name) { return layer; }
+                
             }
-            std::cout << name << "\n";
-            std::cerr << "Error: layer is not found.\n";
+            std::cerr << "Error: "<< name<< " layer is not found.\n";
             exit(0);
         }
 
@@ -234,8 +239,6 @@ class Model
             {
                 auto name = layer.name;
                 auto type = layer.layer_type;
-
-                std::cout << "Layer name: " << name << "; ";
                 if (type == Layer::Layer_Type::Input) 
                 { std::cout << "Layer type: Input"; }
 		        else if (type == Layer::Layer_Type::Conv2D) 
@@ -252,13 +255,17 @@ class Model
                 { std::cout << "Layer type: AveragePooling2D"; }
                 else if (type == Layer::Layer_Type::Flatten) 
                 { std::cout << "Layer type: Flatten"; }
+                else if (type == Layer::Layer_Type::Concatenate) 
+                { std::cout << "Layer type: Concatenate"; }
+                else if (type == Layer::Layer_Type::Add) 
+                { std::cout << "Layer type: Add"; }
                 else if (type == Layer::Layer_Type::Dense) 
                 { std::cout << "Layer type: Dense"; }
                 else if (type == Layer::Layer_Type::Ignore) 
                 { std::cout << "Layer type: Ignore"; }
                 else { std::cerr << "Error: unsupported layer type\n"; exit(0); }
                 std::cout << "\n";
-/*
+                /*
                 std::cout << "Dimension: ";
                 auto &w_dims = layer.w_dims;
                 auto &weights = layer.weights;
@@ -350,7 +357,11 @@ class Model
   public:
     Model(std::string &arch_file, std::string &weight_file)
     {
+        #ifdef NEURON // ab3586
+        loadArchNeuron(arch_file);
+        #else
         loadArch(arch_file);
+        #endif
         if (weight_file != "") {
             loadWeights(weight_file);
         }
@@ -358,7 +369,12 @@ class Model
 
     Model(std::string &arch_file)
     {
+        #ifdef NEURON // ab3586
+        loadArchNeuron(arch_file);
+        #else
         loadArch(arch_file);
+        #endif
+        
     }
 
     void printLayers() { arch.printLayers(); }
@@ -375,6 +391,7 @@ class Model
     { arch.setOutRoot(out_root); }
 
   protected:
+    void loadArchNeuron(std::string &arch_file); // ab3586:populate the data structures to extract neuron and connection information.
     void loadArch(std::string &arch_file);
     void loadArch2(std::string &arch_file); //Shihao's boost::ptree version
     void loadWeights(std::string &weight_file);
