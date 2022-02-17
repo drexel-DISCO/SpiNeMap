@@ -1015,6 +1015,7 @@ void Model::loadArch(std::string &arch_file_path)
                 output_dims = {1, 1, input_dims[0]*input_dims[1]*input_dims[2]};
                 layer_obj.comp.num_Init = input_dims[0]*input_dims[1]*input_dims[2];
             }
+            //TODO: Add ADD layer implementation here
 
             layer_obj.num_out_tok = output_dims[0]*output_dims[1]*output_dims[2];
             layer_obj.compute_time =  layer_obj.comp.num_AddSub  * Layer::Cost::ADDSUB 
