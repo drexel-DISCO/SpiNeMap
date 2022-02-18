@@ -32,38 +32,39 @@ void Model::Architecture::connector()
 {
     // TODO : ab3586: Connection function currently connects layers sequentially. Look for in_bound layers. 
     int prev = 0;
-    for (int i = 1; i < layers.size() - 1; i++)
+    for (int i = 0; i < layers.size() - 1; i++)
     {
         // ab3586
         // find the inbound layer IDs
-        
-        std::cout << "\ninbound layer of " << layers[i].name << std::endl;
         for(auto& n_inbound : layers[i].inbound_layers)
         {   
             int j=0;
             std::string name =  n_inbound;
-            std::cout << "inbound:"<<  name << std::endl;
-            
-            auto& l_inbound = getlayer(name);    
-            
+             
+            auto& l_inbound = getLayer(name);    
+             
             // find the layer id (index) for the layers ds 
             for(j=0; j<layers.size(); j++)
             {
-                std::string l_name = layers[i].name;
+                std::string l_name = layers[j].name;
                 if(l_name.compare(name) == 0)
                 {
                     break;
                 }    
             }
 
+            std::cout << "\nInbound layer of " << layers[i].name << " is: "<<  name << std::endl;
+            std::cout << "\nLayer ID: " << i << " Inbound ID: "<<  j << std::endl;
             if (layers[i].layer_type == Layer::Layer_Type::Conv2D)
             {
                 if (layers[i].padding_type == Layer::Padding_Type::same)
                 {
+                    std::cout << "Conv with Padding" << std::endl;
                     connToConvPadding(j, i);
                 }
                 else
                 {
+                    std::cout << "Conv without Padding" << std::endl;
                     connToConv(j, i);
                 }
             }
@@ -84,10 +85,10 @@ void Model::Architecture::connector()
             else if (layers[i].layer_type == Layer::Layer_Type::BatchNormalization)
             {
             }
-            else if (layers[i + 1].layer_type == Layer::Layer_Type::MaxPooling2D \
-                    || layers[i + 1].layer_type == Layer::Layer_Type::AveragePooling2D \
-                    || layers[i + 1].layer_type == Layer::Layer_Type::GlobalPooling2D \
-                    || layers[i + 1].layer_type == Layer::Layer_Type::GlobalAveragePooling2D)
+            else if (layers[i].layer_type == Layer::Layer_Type::MaxPooling2D \
+                    || layers[i].layer_type == Layer::Layer_Type::AveragePooling2D \
+                    || layers[i].layer_type == Layer::Layer_Type::GlobalPooling2D \
+                    || layers[i].layer_type == Layer::Layer_Type::GlobalAveragePooling2D)
             {
                 connToPool(j, i); 
             }
@@ -119,8 +120,8 @@ void Model::Architecture::connector()
             }
             else
             {   
-                int type = int(layers[i+1].layer_type) ;
-                std::cout << "ERROR: " << layers[i+1].name << std::endl;
+                int type = int(layers[i].layer_type) ;
+                std::cout << "ERROR: " << layers[i].name << " from "<< layers[j].name <<std::endl;
                 std::cout << "ERROR: " << type << std::endl;
                 std::cerr << "Error: unsupported connection type. \n";
                 exit(0);
@@ -135,21 +136,23 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
                                      unsigned next_layer_id)
 {
 
-    std::cout << "Reached Conv Conn: " << next_layer_id  << std::endl;
     auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
     auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
-
+    std::cout <<"Current Neuron IDs Size: " << cur_neurons_ids.size()  << std::endl;
+    
     auto &conv_kernel_dims = layers[next_layer_id].w_dims;
     auto &conv_kernel_weights = layers[next_layer_id].weights;
     auto &conv_strides = layers[next_layer_id].strides;
     auto &conv_output_dims = layers[next_layer_id].output_dims;
     auto &conv_output_neuron_ids = layers[next_layer_id].output_neuron_ids;
-
-    std::cout << "Reached Conv Conn1 " << std::endl;
+    
+#if DEBUG
+    std::cout << "Input Add: "<< &cur_neurons_ids << std::endl;
+    std::cout << "Output Add: "<< &conv_output_neuron_ids << std::endl;
+#endif
     // Important. We need to re-organize the conv kernel to be more memory-friendly
     // Original layout: row->col->dep->filter
     // New layer: filter->dep->row->col
-    std::cout << conv_kernel_dims[0] << std::endl;
     unsigned row_limit = conv_kernel_dims[0];
     unsigned col_limit = conv_kernel_dims[1];
     unsigned dep_limit = conv_kernel_dims[2];
@@ -160,7 +163,6 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
                                                   row_limit * 
                                                   col_limit, 0.0);
 
-    std::cout << "Reached Conv Conn2" << std::endl;
     for (unsigned row = 0; row < row_limit; row++)
     {
         for (unsigned col = 0; col < col_limit; col++)
@@ -183,55 +185,10 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
             }
         }
     }
+    
+    uint64_t conv_neuron_id_track = cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
 
-    /*
-    for (unsigned row = 0; row < row_limit; row++)
-    {
-        for (unsigned col = 0; col < col_limit; col++)
-        {
-            for (unsigned dep = 0; dep < dep_limit; dep++)
-            {
-                for (unsigned filter = 0; filter < filter_limit; filter++)
-                {
-                    std::cout << conv_kernel_weights[
-                        row * col_limit * dep_limit * filter_limit +
-                        col * dep_limit * filter_limit +
-                        dep * filter_limit +
-                        filter] << " ";
-                }
-                std::cout << "\n";
-            }
-            std::cout << "\n";
-        }
-        std::cout << "\n";
-    }
-    std::cout << "-------------------------\n";
-    for (unsigned filter = 0; filter < filter_limit; filter++)
-    {
-        for (unsigned dep = 0; dep < dep_limit; dep++)
-        {
-            for (unsigned row = 0; row < row_limit; row++)
-            {
-                for (unsigned col = 0; col < col_limit; col++) 
-                {
-                    std::cout << conv_kernel_weights_format[
-                        filter * dep_limit * row_limit * col_limit + 
-                        dep * row_limit * col_limit + 
-                        row * col_limit +
-                        col] << " ";
-                }
-                std::cout << "\n";
-            }
-            std::cout << "\n";
-        }
-        std::cout << "\n";
-    }
 
-    exit(0);
-    */
-
-    uint64_t conv_neuron_id_track = 
-        cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
     // std::cout << conv_neuron_id_track << "\n";
 
     unsigned conv_output_dims_x = 0;
@@ -315,6 +272,7 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
             }
         }
     }
+    std::cout <<" Reached 2" << std::endl;
     // std::cout << "\n";
     conv_output_dims.push_back(conv_output_dims_x);
     conv_output_dims.push_back(conv_output_dims_y);
@@ -323,17 +281,24 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
 
 void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next_layer_id)
 {
-    std::cout << "Reached Conv Conn2" << std::endl;
+
+    std::cout << cur_layer_id << ":" << next_layer_id << std::endl;
     auto &ori_neurons_dims = layers[cur_layer_id].output_dims;
     auto &ori_neurons_ids = layers[cur_layer_id].output_neuron_ids;
 
+#if DEBUG
+    std::cout <<"Current Neuron IDs Size: " << ori_neurons_ids.size()  << std::endl;
+#endif
     auto &conv_kernel_dims = layers[next_layer_id].w_dims;
     auto &conv_kernel_weights = layers[next_layer_id].weights;
     auto &conv_strides = layers[next_layer_id].strides;
     auto &conv_output_dims = layers[next_layer_id].output_dims;
     auto &conv_output_neuron_ids = layers[next_layer_id].output_neuron_ids;
-
-    std::cout << "Reached Conv Conn2" << std::endl;
+#if DEBUG
+    std::cout << "Input Add: "<< &ori_neurons_ids << std::endl;
+    std::cout << "Output Add: "<< &conv_output_neuron_ids << std::endl;
+    std::cout <<"NeuronID Size: "<< layers[next_layer_id].output_neuron_ids.size() << std::endl;
+#endif
     // Important. We need to re-organize the conv kernel to be more memory-friendly
     // Original layout: row->col->dep->filter
     // New layer: filter->dep->row->col
@@ -342,7 +307,6 @@ void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next
     unsigned dep_limit = conv_kernel_dims[2];
     unsigned filter_limit = conv_kernel_dims[3];
 
-    std::cout << "Reached Conv Conn2" << std::endl;
     std::vector<float> conv_kernel_weights_format(filter_limit * 
                                                   dep_limit * 
                                                   row_limit * 
@@ -356,6 +320,7 @@ void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next
             {
                 for (unsigned filter = 0; filter < filter_limit; filter++)
                 {
+                    
                     conv_kernel_weights_format[
                         filter * dep_limit * row_limit * col_limit +
                         dep * row_limit * col_limit +
@@ -371,7 +336,6 @@ void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next
         }
     }
 
-    std::cout << "Reached Conv Conn2" << std::endl;
     // Determine the number of paddings
     auto padding_to_row = 
         ((ori_neurons_dims[0] - 1) * 
@@ -423,6 +387,9 @@ void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next
 
     uint64_t conv_neuron_id_track = 
         ori_neurons_ids[ori_neurons_ids.size() - 1] + 1;
+
+
+
 
     unsigned conv_output_dims_x = 0;
     unsigned conv_output_dims_y = 0;
@@ -524,11 +491,14 @@ void Model::Architecture::connToPool(unsigned cur_layer_id, unsigned next_layer_
 {
     auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
     auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
-
+    std::cout << cur_layer_id << " : " << next_layer_id << std::endl;
     auto &pool_kernel_dims = layers[next_layer_id].w_dims;
     auto &pool_strides = layers[next_layer_id].strides;
     auto &pool_output_dims = layers[next_layer_id].output_dims;
     auto &pool_output_neuron_ids = layers[next_layer_id].output_neuron_ids;
+
+    std::cout << "Input Add: "<< &cur_neurons_ids << std::endl;
+    std::cout << "Output Add: "<<&pool_output_neuron_ids << std::endl;
 
     uint64_t pool_neuron_id_track = 
         cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
@@ -538,7 +508,10 @@ void Model::Architecture::connToPool(unsigned cur_layer_id, unsigned next_layer_
 
     pool_kernel_dims.push_back(cur_neurons_dims[2]);
 
-    // For each filter
+
+    
+    //if(pool_kernel_dims[3 == 0]) pool_kernel_dims[3] = 1;
+    
     for (unsigned filter = 0; 
          filter < pool_kernel_dims[3]; 
          filter++)
@@ -759,7 +732,7 @@ void Model::Architecture::printConns(std::string &out_root)
             auto &weights = (*iter).second.weights;
 
             weights_out << neuron << " ";
-            conns_out << neuron << " ";
+            conns_out << '(' <<neuron <<','<< layers[i].name << ')' << " ";
             for (unsigned j = 0; j < out_neurons_ids.size(); j++)
             {
                 weights_out << weights[j] << " ";
@@ -799,18 +772,39 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             {
                 std::vector<std::string> input_shape;
                 std::vector<unsigned> output_dims;
+                
+                
                 for (auto &cell: layer["config"]["batch_input_shape"])
                 {
+                    //input_shape.push_back(cell.second.get_value<std::string>());
                     if (cell == nlohmann::detail::value_t::null) cell = 0; 
                     output_dims.push_back(cell);
                 }
-
+                
+                //input_shape.erase(input_shape.begin());
                 output_dims.erase(output_dims.begin()); //Delete the first null (see json for more details)
                
                 std::string name = "input";
                 Layer::Layer_Type layer_type = Layer::Layer_Type::Input;
                 arch.addLayer(name, layer_type);
                 arch.getLayer(name).setOutputDim(output_dims);
+                
+                auto &out_neuro_ids = arch.getLayer(name).output_neuron_ids;
+                
+                for (int k = 0; k < output_dims[2]; k++)
+                {
+                    for (int i = 0; i < output_dims[0]; i++)
+                    {
+                        for (int j = 0; j < output_dims[1]; j++)
+                        {
+                            out_neuro_ids.push_back(k * output_dims[0] * output_dims[1] +
+                                                    i * output_dims[1] + j);
+                        }
+                    }
+                }
+                std::cout <<"Layer Name: " << name << " Dimensions: << " << out_neuro_ids.size()  << std::endl;
+                
+                
                 layer_counter++;
             }
 
@@ -818,7 +812,7 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             std::string name = layer["config"]["name"];
             
             // ab3586
-            #if 0
+            #if 1
 
             std::cout << layer["name"] <<" : " << layer["class_name"] << "\n" << std::endl;
             #endif
@@ -827,7 +821,7 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             if (class_name == "InputLayer") { layer_type = Layer::Layer_Type::Input; }
             else if (class_name == "Conv2D" || class_name == "QConv2D") { layer_type = Layer::Layer_Type::Conv2D; }
             else if (class_name == "Activation" || class_name == "QActivation") {layer_type = Layer::Layer_Type::Activation; }
-            else if (class_name == "BatchNormalization") {layer_type = Layer::Layer_Type::BatchNormalization; }
+            else if (class_name == "BatchNormalization" || class_name == "QBatchNormalization") {layer_type = Layer::Layer_Type::BatchNormalization; }
             else if (class_name == "Dropout") { layer_type = Layer::Layer_Type::Ignore; }
             else if (class_name == "MaxPooling2D") { layer_type = Layer::Layer_Type::MaxPooling2D; }
             else if (class_name == "AveragePooling2D") { layer_type = Layer::Layer_Type::AveragePooling2D; }
@@ -892,6 +886,7 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                 //purely for the sdf representation
                 std::vector<unsigned> kernel_size;
                 for (auto &dim : layer["config"]["pool_size"]) {
+                    std::cout << dim << std::endl;
                     kernel_size.push_back(dim);
                 }
                 arch.getLayer(name).setKernelSize(kernel_size);
@@ -927,7 +922,8 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             if(ll.layer_type == Layer::Layer_Type::Concatenate \
                    ||  ll.layer_type == Layer::Layer_Type::Dropout \
                    ||  ll.layer_type == Layer::Layer_Type::BatchNormalization \
-                    || ll.layer_type == Layer::Layer_Type::Activation)
+                    || ll.layer_type == Layer::Layer_Type::Activation\
+					|| ll.layer_type == Layer::Layer_Type::ZeroPadding2D)
             {
                 continue;
             }
@@ -946,7 +942,8 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                     if(inLayer.layer_type == Layer::Layer_Type::Concatenate \
                            ||  inLayer.layer_type == Layer::Layer_Type::Dropout \
                            ||  inLayer.layer_type == Layer::Layer_Type::BatchNormalization \
-                            || inLayer.layer_type == Layer::Layer_Type::Activation)
+                            || inLayer.layer_type == Layer::Layer_Type::Activation\
+							|| inLayer.layer_type == Layer::Layer_Type::ZeroPadding2D)
                     {
                         
                         new_layer = 1; 
@@ -965,7 +962,8 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                                     if(in_layer.layer_type == Layer::Layer_Type::Concatenate \
                                             || in_layer.layer_type == Layer::Layer_Type::Dropout \
                                             || in_layer.layer_type == Layer::Layer_Type::BatchNormalization \
-                                            || in_layer.layer_type == Layer::Layer_Type::Activation)
+                                            || in_layer.layer_type == Layer::Layer_Type::Activation\
+											|| in_layer.layer_type == Layer::Layer_Type::ZeroPadding2D)
                                     {
                                         in_layer_s = layer_s;
                                         new_layer = 1;
@@ -994,7 +992,140 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             }
             //std::cout << "" << std::endl;
         }
-        
+
+        //Processing layers' sdf representation
+        for (auto& layer: json_layers) 
+        {
+            std::string layer_name = layer["name"];
+            auto& layer_obj = arch.getLayer(layer_name);
+            std::vector<unsigned>& output_dims = layer_obj.output_dims;
+            std::vector<unsigned> input_dims(3, 0);
+
+            if (layer_obj.layer_type == Layer::Layer_Type::Input)
+            {
+                input_dims = layer_obj.output_dims;
+            } 
+            else
+            {
+                auto& inputLayers = layer_obj.inbound_layers;
+                for (auto& inLayer : inputLayers)
+                {
+                    //All input layers should have the same output_dims[0, 1]
+                    input_dims[0] = arch.getLayer(inLayer).output_dims[0]; 
+                    input_dims[1] = arch.getLayer(inLayer).output_dims[1];
+                    input_dims[2] += arch.getLayer(inLayer).output_dims[2];               
+                }
+                output_dims = input_dims;
+            }
+
+            if (layer_obj.layer_type == Layer::Layer_Type::Padding)
+            {    
+                int i = 0;
+                
+                for (auto pad_dim : layer_obj.padding) 
+                {
+                    output_dims[i] += pad_dim;
+                    layer_obj.comp.num_Init += pad_dim;
+                    i++;
+                }
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::Conv2D ||
+                    layer_obj.layer_type == Layer::Layer_Type::MaxPooling2D ||
+                    layer_obj.layer_type == Layer::Layer_Type::AveragePooling2D)
+            {
+                for (int i=0; i < 2; i++) {
+                    int k = layer_obj.kernel_sz[i];
+                    int s = layer_obj.strides[i];
+                    if (layer_obj.padding_type == Layer::Padding_Type::valid)
+                        output_dims[i] = (float)((float)output_dims[i] - (float)k)/(float)s + 1;
+                    else 
+                        //layer_obj.padding_type == Layer::Padding_Type::same
+                        output_dims[i] = ceil((float)output_dims[i]/(float)s);
+                }
+
+                if (layer_obj.layer_type == Layer::Layer_Type::Conv2D) 
+                {
+                    output_dims[2] = layer_obj.num_filter;
+                    layer_obj.comp.num_MAC =  output_dims[2]              // n
+                                            * input_dims[2]               // m
+                                            * layer_obj.kernel_sz[0] 
+                                            * layer_obj.kernel_sz[1]      // k^2
+                                            * output_dims[0]              // new w
+                                            * output_dims[1];             // new h 
+                } 
+                else 
+                { // layer is Pooling2D
+                    if (layer_obj.layer_type == Layer::Layer_Type::MaxPooling2D) 
+                    {
+                        layer_obj.comp.num_Compare =  output_dims[2]             // n
+                                            * (layer_obj.kernel_sz[0] 
+                                                * layer_obj.kernel_sz[1] - 1)  // k^2 -1
+                                            * output_dims[0]                 // new w
+                                            * output_dims[1];                // new h 
+                    }
+                    else if (layer_obj.layer_type == Layer::Layer_Type::AveragePooling2D) 
+                    {
+                        layer_obj.comp.num_AddSub =  output_dims[2]             // n
+                                            * (layer_obj.kernel_sz[0] 
+                                                * layer_obj.kernel_sz[1] - 1) // k^2 -1
+                                            * output_dims[0]                 // new w
+                                            * output_dims[1]                // new h
+                                            +  1;           // (optional) Calculate kernel sz
+                        
+                        layer_obj.comp.num_Div =  output_dims[2]             // n
+                                            * output_dims[0]                 // new w
+                                            * output_dims[1];                // new h 
+                    }
+                }
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::BatchNormalization) 
+            {
+                // Compute gamma*(x - moving_mean)/(moving_variance + epsilon) + beta
+                // moving mean, gamma, beta, (moving_variance + epsilon) are constant during inference
+                uint64_t num_input = input_dims[0]*input_dims[1]*input_dims[2];
+
+                layer_obj.comp.num_AddSub = num_input*2;                
+                layer_obj.comp.num_Mult = num_input;
+                layer_obj.comp.num_Div = num_input*1;
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::Activation)
+            {
+                //Assuming Activation used is relu = 1 compare with 0 per element
+                layer_obj.comp.num_Compare = input_dims[0]*input_dims[1]*input_dims[2];
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::GlobalPooling2D) 
+            {
+                if (layer["class_name"] == "GlobalAveragePooling2D") {
+                    layer_obj.comp.num_AddSub = (input_dims[0] * input_dims[1] - 1)
+                                                * input_dims[2];     
+                    //Each feature map (wxh pix) requires (wxh -1) 
+
+                    layer_obj.comp.num_Div = input_dims[2];              
+                }
+                output_dims = {1, 1, input_dims[2]};
+            } 
+            else if (layer_obj.layer_type == Layer::Layer_Type::Dense) 
+            {
+                unsigned units = layer["config"]["units"];
+                layer_obj.comp.num_MAC = input_dims[2] * units;
+                output_dims = {1, 1, units};
+            }
+            else if (layer_obj.layer_type == Layer::Layer_Type::Flatten)
+            {
+                output_dims = {1, 1, input_dims[0]*input_dims[1]*input_dims[2]};
+                layer_obj.comp.num_Init = input_dims[0]*input_dims[1]*input_dims[2];
+            }
+
+            layer_obj.num_out_tok = output_dims[0]*output_dims[1]*output_dims[2];
+            layer_obj.compute_time =  layer_obj.comp.num_AddSub  * Layer::Cost::ADDSUB 
+                                    + layer_obj.comp.num_MAC     * Layer::Cost::MAC
+                                    + layer_obj.comp.num_Compare * Layer::Cost::COMPARE
+                                    + layer_obj.comp.num_Div     * Layer::Cost::DIVIDE
+                                    + layer_obj.comp.num_Init    * Layer::Cost::INIT
+                                    + layer_obj.comp.num_Mult    * Layer::Cost::MULT;
+
+        }
+
     }
     catch (std::exception const& e)
     {
@@ -1591,6 +1722,7 @@ void Model::extrWeights(hid_t id)
     while(getline(full_name, intermediate, '/'))
     {
         tokens.push_back(intermediate);
+        //std::cout << intermediate << std::endl;
     }
     // The secondary last element indicates the layer name
     // TODO, I'm not sure if this is always true. Need to do more research
@@ -1598,15 +1730,54 @@ void Model::extrWeights(hid_t id)
     
     if (tokens[tokens.size() - 1].find("kernel") != std::string::npos)
     {
-        Layer &layer = arch.getLayer(tokens[tokens.size() - 2]);
+    	// ab3586: changed tokens.size() -2i
+
+    	std::string name = "test";
+    	if (tokens.size() == 6)
+    	{    	// ab3586: changed tokens.size() -2i
+        	if (tokens.size() == 6)
+        	{
+        		name = tokens[tokens.size()-3]+'/'+tokens[tokens.size()-2];
+        	}
+        	else
+        	{
+        		name = tokens[tokens.size()-2];
+        	}
+
+    	}
+    	else
+    	{
+    		name = tokens[tokens.size()-2];
+    	}
+
+        Layer &layer = arch.getLayer(name);
         std::vector<unsigned> dims_vec(dims, dims + ndims);
         std::vector<float> rdata_vec(rdata, rdata + data_size);
-        printf("Reading Weights file");
+        std::cout << "Layer name: " << tokens[tokens.size()-2] << std::endl;
+        std::cout << "Dims: " << dims << " " << dims + ndims<< std::endl;
         layer.setWeights(dims_vec, rdata_vec);
     }
     else if (tokens[tokens.size() - 1].find("bias") != std::string::npos)
     {
-        Layer &layer = arch.getLayer(tokens[tokens.size() - 2]);
+    	std::string name = "test";
+    	if (tokens.size() == 6)
+    	{    	// ab3586: changed tokens.size() -2i
+        	if (tokens.size() == 6)
+        	{
+        		name = tokens[tokens.size()-3]+'/'+tokens[tokens.size()-2];
+        	}
+        	else
+        	{
+        		name = tokens[tokens.size()-2];
+        	}
+
+    	}
+    	else
+    	{
+    		name = tokens[tokens.size()-2];
+    	}
+
+        Layer &layer = arch.getLayer(name);
         std::vector<unsigned> dims_vec(dims, dims + ndims);
         std::vector<float> rdata_vec(rdata, rdata + data_size);
 
@@ -1614,7 +1785,24 @@ void Model::extrWeights(hid_t id)
     }
     else if (tokens[tokens.size() - 1].find("beta") != std::string::npos)
     {
-        Layer &layer = arch.getLayer(tokens[tokens.size() - 2]);
+    	std::string name = "test";
+    	if (tokens.size() == 6)
+    	{    	// ab3586: changed tokens.size() -2i
+        	if (tokens.size() == 6)
+        	{
+        		name = tokens[tokens.size()-3]+'/'+tokens[tokens.size()-2];
+        	}
+        	else
+        	{
+        		name = tokens[tokens.size()-2];
+        	}
+
+    	}
+    	else
+    	{
+    		name = tokens[tokens.size()-2];
+    	}
+        Layer &layer = arch.getLayer(name);
         std::vector<unsigned> dims_vec(dims, dims + ndims);
         std::vector<float> rdata_vec(rdata, rdata + data_size);
 
@@ -1622,7 +1810,24 @@ void Model::extrWeights(hid_t id)
     }
     else if (tokens[tokens.size() - 1].find("gamma") != std::string::npos)
     {
-        Layer &layer = arch.getLayer(tokens[tokens.size() - 2]);
+    	std::string name = "test";
+    	if (tokens.size() == 6)
+    	{    	// ab3586: changed tokens.size() -2i
+        	if (tokens.size() == 6)
+        	{
+        		name = tokens[tokens.size()-3]+'/'+tokens[tokens.size()-2];
+        	}
+        	else
+        	{
+        		name = tokens[tokens.size()-2];
+        	}
+
+    	}
+    	else
+    	{
+    		name = tokens[tokens.size()-2];
+    	}
+        Layer &layer = arch.getLayer(name);
         std::vector<unsigned> dims_vec(dims, dims + ndims);
         std::vector<float> rdata_vec(rdata, rdata + data_size);
 
@@ -1630,7 +1835,24 @@ void Model::extrWeights(hid_t id)
     }
     else if (tokens[tokens.size() - 1].find("moving_mean") != std::string::npos)
     {
-        Layer &layer = arch.getLayer(tokens[tokens.size() - 2]);
+    	std::string name = "test";
+    	if (tokens.size() == 6)
+    	{    	// ab3586: changed tokens.size() -2i
+        	if (tokens.size() == 6)
+        	{
+        		name = tokens[tokens.size()-3]+'/'+tokens[tokens.size()-2];
+        	}
+        	else
+        	{
+        		name = tokens[tokens.size()-2];
+        	}
+
+    	}
+    	else
+    	{
+    		name = tokens[tokens.size()-2];
+    	}
+        Layer &layer = arch.getLayer(name);
         std::vector<unsigned> dims_vec(dims, dims + ndims);
         std::vector<float> rdata_vec(rdata, rdata + data_size);
 
@@ -1638,7 +1860,24 @@ void Model::extrWeights(hid_t id)
     }
     else if (tokens[tokens.size() - 1].find("moving_variance") != std::string::npos)
     {
-        Layer &layer = arch.getLayer(tokens[tokens.size() - 2]);
+    	std::string name = "test";
+    	if (tokens.size() == 6)
+    	{    	// ab3586: changed tokens.size() -2i
+        	if (tokens.size() == 6)
+        	{
+        		name = tokens[tokens.size()-3]+'/'+tokens[tokens.size()-2];
+        	}
+        	else
+        	{
+        		name = tokens[tokens.size()-2];
+        	}
+
+    	}
+    	else
+    	{
+    		name = tokens[tokens.size()-2];
+    	}
+        Layer &layer = arch.getLayer(name);
         std::vector<unsigned> dims_vec(dims, dims + ndims);
         std::vector<float> rdata_vec(rdata, rdata + data_size);
 
