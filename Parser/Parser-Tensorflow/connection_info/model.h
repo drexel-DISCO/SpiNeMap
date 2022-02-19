@@ -179,13 +179,15 @@ class Model
       protected:
         struct ConnEntry
         {
-            ConnEntry(uint64_t _id, float _w)
+            ConnEntry(uint64_t _id, float _w, std::string& _str)
             {
                 out_neurons_ids.push_back(_id);
+                out_layer_name.push_back(_str);
                 weights.push_back(_w);
             }
 
             std::vector<uint64_t> out_neurons_ids;
+            std::vector<std::string> out_layer_name;
             std::vector<float> weights;
         };
         std::unordered_map<uint64_t, ConnEntry> connections;
@@ -199,6 +201,7 @@ class Model
         void connToFlat(unsigned, unsigned);
         void connToDense(unsigned, unsigned);
         void connToAdd(unsigned, unsigned);
+        void connToPadding(unsigned, unsigned);
 
         void layerOutput();
 

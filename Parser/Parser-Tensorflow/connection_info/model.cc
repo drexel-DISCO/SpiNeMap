@@ -71,11 +71,11 @@ void Model::Architecture::connector()
             
             else if (layers[i].layer_type == Layer::Layer_Type::Activation)
             {
-                //connToAct(j, i);
+                connToAct(j, i);
             }
             else if (layers[i].layer_type == Layer::Layer_Type::BatchNormalization)
             {
-                //connToNorm(j, i);
+                connToNorm(j, i);
             }
             else if (layers[i].layer_type == Layer::Layer_Type::Dropout)
             {
@@ -109,14 +109,16 @@ void Model::Architecture::connector()
             }
             else if (layers[i].layer_type == Layer::Layer_Type::Add)
             {
-                //connToAdd(j, i);
+                connToAdd(j, i);
             }
             else if (layers[i].layer_type == Layer::Layer_Type::ZeroPadding2D)
             {
+            	connToPadding(j,i);
+
             }
             else if (layers[i].layer_type == Layer::Layer_Type::MAX)
             {
-                //connToDense(prev, i + 1);
+                //connToDense(j, i);
             }
             else
             {   
@@ -138,7 +140,7 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
 
     auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
     auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
-    std::cout <<"Current Neuron IDs Size: " << cur_neurons_ids.size()  << std::endl;
+
     
     auto &conv_kernel_dims = layers[next_layer_id].w_dims;
     auto &conv_kernel_weights = layers[next_layer_id].weights;
@@ -147,17 +149,24 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
     auto &conv_output_neuron_ids = layers[next_layer_id].output_neuron_ids;
     
 #if DEBUG
+    std::cout << "Current Neuron IDs Size: " << cur_neurons_ids.size()  << std::endl;
     std::cout << "Input Add: "<< &cur_neurons_ids << std::endl;
     std::cout << "Output Add: "<< &conv_output_neuron_ids << std::endl;
 #endif
     // Important. We need to re-organize the conv kernel to be more memory-friendly
     // Original layout: row->col->dep->filter
     // New layer: filter->dep->row->col
+
     unsigned row_limit = conv_kernel_dims[0];
     unsigned col_limit = conv_kernel_dims[1];
     unsigned dep_limit = conv_kernel_dims[2];
     unsigned filter_limit = conv_kernel_dims[3];
 
+    std::string out_layer_name = layers[next_layer_id].name;
+    if(layers[cur_layer_id].layer_type == Layer::Layer_Type::ZeroPadding2D)
+    {
+    	out_layer_name = layers[cur_layer_id].inbound_layers[0];
+    }
     std::vector<float> conv_kernel_weights_format(filter_limit * 
                                                   dep_limit * 
                                                   row_limit * 
@@ -254,11 +263,13 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
                                 (*iter).second.out_neurons_ids.push_back(
                                     conv_neuron_id_track);
                                 (*iter).second.weights.push_back(weight);
+                                (*iter).second.out_layer_name.push_back(
+                                		out_layer_name);
                             }
                             else
                             {
                                 connections.insert({cur_neuron_id, 
-                                    {conv_neuron_id_track, weight}});
+                                    {conv_neuron_id_track, weight, out_layer_name}});
                             }
                             
                             // std::cout << cur_neuron_id << " ";
@@ -272,7 +283,6 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
             }
         }
     }
-    std::cout <<" Reached 2" << std::endl;
     // std::cout << "\n";
     conv_output_dims.push_back(conv_output_dims_x);
     conv_output_dims.push_back(conv_output_dims_y);
@@ -306,6 +316,13 @@ void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next
     unsigned col_limit = conv_kernel_dims[1];
     unsigned dep_limit = conv_kernel_dims[2];
     unsigned filter_limit = conv_kernel_dims[3];
+
+    std::string out_layer_name = layers[next_layer_id].name;
+    if(layers[cur_layer_id].layer_type == Layer::Layer_Type::ZeroPadding2D)
+    {
+    	out_layer_name = layers[cur_layer_id].inbound_layers[0];
+    }
+
 
     std::vector<float> conv_kernel_weights_format(filter_limit * 
                                                   dep_limit * 
@@ -451,12 +468,13 @@ void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next
                                     (*iter).second.out_neurons_ids.push_back(
                                         conv_neuron_id_track);
                                     (*iter).second.weights.push_back(weight);
+                                    (*iter).second.out_layer_name.push_back(out_layer_name);
                                 }
                                 else
                                 {
                                     connections.insert({cur_neuron_id, 
                                                        {conv_neuron_id_track, 
-                                                        weight}});
+                                                        weight, out_layer_name}});
                                 }
                             }
                         }
@@ -474,12 +492,120 @@ void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next
 
 void Model::Architecture::connToAct(unsigned cur_layer_id, unsigned next_layer_id)
 {
+    auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
+    auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
 
+    auto &output_dims = layers[cur_layer_id].output_dims;
+    auto &output_neuron_ids = layers[next_layer_id].output_neuron_ids;
+
+    layers[next_layer_id].output_dims = layers[cur_layer_id].output_dims;
+    std::string out_layer_name = layers[next_layer_id].name;
+
+    uint64_t cur_layer_size = cur_neurons_ids.size();
+    uint64_t out_neuron_id_track = cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
+
+    uint64_t data_dim = 1;
+    for (auto dim : cur_neurons_dims) { data_dim *= dim; }
+
+    for (unsigned i = 0; i < cur_layer_size; i++)
+    {
+        for (unsigned j = 0; j < cur_layer_size; j++)
+        {
+            uint64_t cur_neuron_id = cur_neurons_ids[j];
+
+            if(i==j)
+            {
+                if (auto iter = connections.find(cur_neuron_id);
+                       iter != connections.end())
+                {
+                    (*iter).second.out_neurons_ids.push_back(out_neuron_id_track);
+                    (*iter).second.weights.push_back(1);
+                    (*iter).second.out_layer_name.push_back(out_layer_name);
+                }
+                else
+                {
+                    connections.insert({cur_neuron_id, {out_neuron_id_track, -1, out_layer_name}});
+                }
+            }
+        }
+        output_neuron_ids.push_back(out_neuron_id_track);
+        out_neuron_id_track++;
+    }
 }
-        
-void Model::Architecture::connToNorm(unsigned cur_layer_id, unsigned next_layer_id)
+
+void Model::Architecture::connToPadding(unsigned cur_layer_id,
+                                     unsigned next_layer_id)
 {
 
+    auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
+    auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
+
+    // TODO: Assumption - maximum of only 3 dimensions will be processed.
+    auto &padding_dims = layers[cur_layer_id].output_dims;
+    auto &output_neuron_ids = layers[next_layer_id].output_neuron_ids;
+
+    padding_dims[0] = cur_neurons_dims[0] + layers[next_layer_id].padding[0];
+    padding_dims[1] = cur_neurons_dims[1] + layers[next_layer_id].padding[1];
+    padding_dims[2] = cur_neurons_dims[2];
+    std::string out_layer_name = layers[next_layer_id].name;
+
+
+    //output_neuron_ids
+    uint64_t out_neuron_id_track = cur_neurons_ids[0];
+
+    for (int k = 0; k < padding_dims[2]; k++)
+    {
+        for (int i = 0; i < padding_dims[0]; i++)
+        {
+            for (int j = 0; j < padding_dims[1]; j++)
+            {
+            	output_neuron_ids.push_back(out_neuron_id_track + ( k * padding_dims[0] * padding_dims[1] +
+                                        i * padding_dims[1] + j));
+            }
+        }
+    }
+
+}
+
+void Model::Architecture::connToNorm(unsigned cur_layer_id, unsigned next_layer_id)
+{
+    auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
+    auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
+
+    auto &output_neuron_ids = layers[next_layer_id].output_neuron_ids;
+    layers[next_layer_id].output_dims = layers[cur_layer_id].output_dims;
+    uint64_t cur_layer_size = cur_neurons_ids.size();
+    uint64_t out_neuron_id_track = cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
+    std::string out_layer_name = layers[next_layer_id].name;
+
+    uint64_t data_dim = 1;
+    for (auto dim : cur_neurons_dims) { data_dim *= dim; }
+
+    for (unsigned i = 0; i < cur_layer_size; i++)
+    {
+        for (unsigned j = 0; j < cur_layer_size; j++)
+        {
+            uint64_t cur_neuron_id = cur_neurons_ids[j];
+
+            if(i==j)
+            {
+                if (auto iter = connections.find(cur_neuron_id);
+                       iter != connections.end())
+                {
+                    (*iter).second.out_neurons_ids.push_back(out_neuron_id_track);
+                    (*iter).second.weights.push_back(1);
+                    (*iter).second.out_layer_name.push_back(out_layer_name);
+
+                }
+                else
+                {
+                    connections.insert({cur_neuron_id, {out_neuron_id_track, -1, out_layer_name}});
+                }
+            }
+        }
+        output_neuron_ids.push_back(out_neuron_id_track);
+        out_neuron_id_track++;
+    }
 }
 
 void Model::Architecture::connToDrop(unsigned cur_layer_id, unsigned next_layer_id)
@@ -497,8 +623,10 @@ void Model::Architecture::connToPool(unsigned cur_layer_id, unsigned next_layer_
     auto &pool_output_dims = layers[next_layer_id].output_dims;
     auto &pool_output_neuron_ids = layers[next_layer_id].output_neuron_ids;
 
+#if DEBUG
     std::cout << "Input Add: "<< &cur_neurons_ids << std::endl;
     std::cout << "Output Add: "<<&pool_output_neuron_ids << std::endl;
+#endif
 
     uint64_t pool_neuron_id_track = 
         cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
@@ -508,7 +636,9 @@ void Model::Architecture::connToPool(unsigned cur_layer_id, unsigned next_layer_
 
     pool_kernel_dims.push_back(cur_neurons_dims[2]);
 
-
+    if (cur_neurons_dims[0] == 1){
+    	pool_output_neuron_ids.push_back(pool_neuron_id_track);
+    	return;}
     
     //if(pool_kernel_dims[3 == 0]) pool_kernel_dims[3] = 1;
     
@@ -552,12 +682,13 @@ void Model::Architecture::connToPool(unsigned cur_layer_id, unsigned next_layer_
                             (*iter).second.out_neurons_ids.push_back(
                                 pool_neuron_id_track);
                             (*iter).second.weights.push_back(-1);
+                            (*iter).second.out_layer_name.push_back(layers[next_layer_id].name);
                         }
                         else
                         {
                             connections.insert({cur_neuron_id, 
                                                {pool_neuron_id_track, 
-                                                -1}});
+                                                -1, layers[next_layer_id].name}});
                         }
                     }
                 }
@@ -589,6 +720,7 @@ void Model::Architecture::connToFlat(unsigned cur_layer_id, unsigned next_layer_
     output_dims.push_back(1);
     output_dims.push_back(1);
 
+    std::string out_layer_name = layers[next_layer_id].name;
     for (uint64_t i = 0; i < data_dim; i++)
     {
         uint64_t cur_neuron_id = cur_neurons_ids[i];
@@ -598,10 +730,11 @@ void Model::Architecture::connToFlat(unsigned cur_layer_id, unsigned next_layer_
         {
             (*iter).second.out_neurons_ids.push_back(out_neuron_id_track);
             (*iter).second.weights.push_back(-1);
+            (*iter).second.out_layer_name.push_back(out_layer_name);
         }
         else
         {
-            connections.insert({cur_neuron_id, {out_neuron_id_track, -1}});
+            connections.insert({cur_neuron_id, {out_neuron_id_track, -1, out_layer_name}});
         }
         
         output_neuron_ids.push_back(out_neuron_id_track);
@@ -619,10 +752,8 @@ void Model::Architecture::connToDense(unsigned cur_layer_id, unsigned next_layer
     auto &output_dims = layers[next_layer_id].output_dims;
     auto &output_neuron_ids = layers[next_layer_id].output_neuron_ids;
     
-    if(cur_layer_id ==0)
-    { 
-        cur_neurons_ids.push_back(0); 
-    }
+    std::string out_layer_name = layers[next_layer_id].name;
+
     uint64_t out_neuron_id_track = cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
 
     uint64_t data_dim = 1;
@@ -644,10 +775,11 @@ void Model::Architecture::connToDense(unsigned cur_layer_id, unsigned next_layer
             {
                 (*iter).second.out_neurons_ids.push_back(out_neuron_id_track);
                 (*iter).second.weights.push_back(weight);
+                (*iter).second.out_layer_name.push_back(out_layer_name);
             }
             else    
             {
-                connections.insert({cur_neuron_id, {out_neuron_id_track, weight}});
+                connections.insert({cur_neuron_id, {out_neuron_id_track, weight, out_layer_name}});
             }
         }
         output_neuron_ids.push_back(out_neuron_id_track);
@@ -660,29 +792,22 @@ void Model::Architecture::connToAdd(unsigned cur_layer_id, unsigned next_layer_i
     auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
     auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
 
-    auto &dense_dims = layers[next_layer_id].w_dims;
-    auto &output_dims = layers[next_layer_id].output_dims;
     auto &output_neuron_ids = layers[next_layer_id].output_neuron_ids;
-    
-    if(cur_layer_id ==0)
-    { 
-        cur_neurons_ids.push_back(0); 
-    }
+    layers[next_layer_id].output_dims = layers[cur_layer_id].output_dims;
+    std::string out_layer_name = layers[next_layer_id].name;
+
+    uint64_t cur_layer_size = cur_neurons_ids.size();
     uint64_t out_neuron_id_track = cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
 
     uint64_t data_dim = 1;
     for (auto dim : cur_neurons_dims) { data_dim *= dim; }
 
-    output_dims.push_back(dense_dims[1]);
-    output_dims.push_back(1);
-    output_dims.push_back(1);
-    
-    for (unsigned i = 0; i < dense_dims[1]; i++)
+    for (unsigned i = 0; i < cur_layer_size; i++)
     {
-        for (unsigned j = 0; j < dense_dims[0]; j++)
+        for (unsigned j = 0; j < cur_layer_size; j++)
         {
             uint64_t cur_neuron_id = cur_neurons_ids[j];
-            
+
             if(i==j)
             {
                 if (auto iter = connections.find(cur_neuron_id);
@@ -690,10 +815,11 @@ void Model::Architecture::connToAdd(unsigned cur_layer_id, unsigned next_layer_i
                 {
                     (*iter).second.out_neurons_ids.push_back(out_neuron_id_track);
                     (*iter).second.weights.push_back(1);
+                    (*iter).second.out_layer_name.push_back(out_layer_name);
                 }
-                else    
+                else
                 {
-                    connections.insert({cur_neuron_id, {out_neuron_id_track, 1}});
+                    connections.insert({cur_neuron_id, {out_neuron_id_track, -1, out_layer_name}});
                 }
             }
         }
@@ -713,11 +839,11 @@ void Model::Architecture::setOutRoot(std::string &out_root)
 void Model::Architecture::printConns(std::string &out_root)
 {
     // Txt record
-    std::string conns_out_txt = out_root + ".connection_info.txt";
+    std::string conns_out_txt = out_root + "connection_info.txt";
     std::ofstream conns_out(conns_out_txt);
 
-    std::string weights_out_txt = out_root + ".weight_info.txt";
-    std::ofstream weights_out(weights_out_txt);
+    //std::string weights_out_txt = out_root + ".weight_info.txt";
+    //std::ofstream weights_out(weights_out_txt);
 
     for (int i = 0; i < layers.size() - 1; i++)
     {
@@ -730,19 +856,20 @@ void Model::Architecture::printConns(std::string &out_root)
 
             auto &out_neurons_ids = (*iter).second.out_neurons_ids;
             auto &weights = (*iter).second.weights;
+            auto &layer_name = (*iter).second.out_layer_name;
 
-            weights_out << neuron << " ";
+           // weights_out << neuron << " ";
             conns_out << '(' <<neuron <<','<< layers[i].name << ')' << " ";
             for (unsigned j = 0; j < out_neurons_ids.size(); j++)
             {
-                weights_out << weights[j] << " ";
-                conns_out << out_neurons_ids[j] << " ";
+              //  weights_out << weights[j] << " ";
+                conns_out << "(" << out_neurons_ids[j] << "," << layer_name[j] << ")" << " ";
             }
-            weights_out << "\n";
+            //weights_out << "\n";
             conns_out << "\n";
         }
     }
-    weights_out.close();
+    //weights_out.close();
     conns_out.close();
 }
 
@@ -822,7 +949,7 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             else if (class_name == "Conv2D" || class_name == "QConv2D") { layer_type = Layer::Layer_Type::Conv2D; }
             else if (class_name == "Activation" || class_name == "QActivation") {layer_type = Layer::Layer_Type::Activation; }
             else if (class_name == "BatchNormalization" || class_name == "QBatchNormalization") {layer_type = Layer::Layer_Type::BatchNormalization; }
-            else if (class_name == "Dropout") { layer_type = Layer::Layer_Type::Ignore; }
+            else if (class_name == "Dropout") { layer_type = Layer::Layer_Type::Dropout; }
             else if (class_name == "MaxPooling2D") { layer_type = Layer::Layer_Type::MaxPooling2D; }
             else if (class_name == "AveragePooling2D") { layer_type = Layer::Layer_Type::AveragePooling2D; }
             else if (class_name == "Flatten") { layer_type = Layer::Layer_Type::Flatten; }
@@ -919,14 +1046,22 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             std::string layer_name = layer["name"];
         
             auto& ll = arch.getLayer(layer["name"]);
-            if(ll.layer_type == Layer::Layer_Type::Concatenate \
-                   ||  ll.layer_type == Layer::Layer_Type::Dropout \
-                   ||  ll.layer_type == Layer::Layer_Type::BatchNormalization \
+
+            //if(ll.layer_type == Layer::Layer_Type::Concatenate \
+                  ||  ll.layer_type == Layer::Layer_Type::Dropout \
+                   ||  ll.layer_type == Layer::Layer_Type::BatchNormalization\
                     || ll.layer_type == Layer::Layer_Type::Activation\
 					|| ll.layer_type == Layer::Layer_Type::ZeroPadding2D)
+
+            if(ll.layer_type == Layer::Layer_Type::Concatenate \
+                   ||  ll.layer_type == Layer::Layer_Type::Dropout)
+                  // ||  ll.layer_type == Layer::Layer_Type::BatchNormalization
+                   // || ll.layer_type == Layer::Layer_Type::Activation\
+					//|| ll.layer_type == Layer::Layer_Type::ZeroPadding2D)
+
             {
                 continue;
-            }
+			}
 
     
             for (auto& in_layer_info : layer["inbound_nodes"][0]) 
@@ -939,12 +1074,20 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                 while(new_layer)
                 {
                     auto& inLayer = arch.getLayer(in_layer_s);
-                    if(inLayer.layer_type == Layer::Layer_Type::Concatenate \
+
+                  //  if(inLayer.layer_type == Layer::Layer_Type::Concatenate \
                            ||  inLayer.layer_type == Layer::Layer_Type::Dropout \
-                           ||  inLayer.layer_type == Layer::Layer_Type::BatchNormalization \
+                           ||  inLayer.layer_type == Layer::Layer_Type::BatchNormalization\
                             || inLayer.layer_type == Layer::Layer_Type::Activation\
 							|| inLayer.layer_type == Layer::Layer_Type::ZeroPadding2D)
-                    {
+
+                    if(inLayer.layer_type == Layer::Layer_Type::Concatenate \
+                           ||  inLayer.layer_type == Layer::Layer_Type::Dropout)
+                           //||  inLayer.layer_type == Layer::Layer_Type::BatchNormalization
+                           // || inLayer.layer_type == Layer::Layer_Type::Activation\
+							//|| inLayer.layer_type == Layer::Layer_Type::ZeroPadding2D)
+
+					{
                         
                         new_layer = 1; 
                         // find the layer info in the JSON file
@@ -960,11 +1103,12 @@ void Model::loadArchNeuron(std::string &arch_file_path)
 
                                     auto& in_layer = arch.getLayer(layer_s);
                                     if(in_layer.layer_type == Layer::Layer_Type::Concatenate \
-                                            || in_layer.layer_type == Layer::Layer_Type::Dropout \
-                                            || in_layer.layer_type == Layer::Layer_Type::BatchNormalization \
-                                            || in_layer.layer_type == Layer::Layer_Type::Activation\
-											|| in_layer.layer_type == Layer::Layer_Type::ZeroPadding2D)
-                                    {
+                                            || in_layer.layer_type == Layer::Layer_Type::Dropout )
+                                           // || in_layer.layer_type == Layer::Layer_Type::BatchNormalization
+                                         //   || in_layer.layer_type == Layer::Layer_Type::Activation\
+										//	|| in_layer.layer_type == Layer::Layer_Type::ZeroPadding2D)
+
+									{
                                         in_layer_s = layer_s;
                                         new_layer = 1;
                                     }
@@ -1730,11 +1874,11 @@ void Model::extrWeights(hid_t id)
     
     if (tokens[tokens.size() - 1].find("kernel") != std::string::npos)
     {
-    	// ab3586: changed tokens.size() -2i
+    	// ab3586: changed tokens.size() -2
 
     	std::string name = "test";
     	if (tokens.size() == 6)
-    	{    	// ab3586: changed tokens.size() -2i
+    	{    	// ab3586: changed tokens.size() -2
         	if (tokens.size() == 6)
         	{
         		name = tokens[tokens.size()-3]+'/'+tokens[tokens.size()-2];
@@ -1753,8 +1897,8 @@ void Model::extrWeights(hid_t id)
         Layer &layer = arch.getLayer(name);
         std::vector<unsigned> dims_vec(dims, dims + ndims);
         std::vector<float> rdata_vec(rdata, rdata + data_size);
-        std::cout << "Layer name: " << tokens[tokens.size()-2] << std::endl;
-        std::cout << "Dims: " << dims << " " << dims + ndims<< std::endl;
+        //std::cout << "Layer name: " << tokens[tokens.size()-2] << std::endl;
+        //std::cout << "Dims: " << dims << " " << dims + ndims<< std::endl;
         layer.setWeights(dims_vec, rdata_vec);
     }
     else if (tokens[tokens.size() - 1].find("bias") != std::string::npos)
