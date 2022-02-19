@@ -28,8 +28,6 @@ int main(int argc, char *argv[])
 
     model.connector();
     std::cout << "\n";
-    //model.printLayers();
-    std::cout << "\n";
-    std::string out_root = "./";//arch_file.substr(0, arch_file.find(".json"));
+    std::string out_root = arch_file.substr(0, arch_file.find(".json"));
     model.printConns(out_root);
 }

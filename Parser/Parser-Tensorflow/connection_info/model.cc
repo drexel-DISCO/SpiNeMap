@@ -851,7 +851,7 @@ void Model::Architecture::setOutRoot(std::string &out_root)
 void Model::Architecture::printConns(std::string &out_root)
 {
     // Txt record
-    std::string conns_out_txt = out_root + "lconnection_info.txt";
+    std::string conns_out_txt = out_root + "connection_info.txt";
     std::ofstream conns_out(conns_out_txt);
 
     //std::string weights_out_txt = out_root + ".weight_info.txt";
