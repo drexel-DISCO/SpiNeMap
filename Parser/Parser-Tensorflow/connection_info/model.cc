@@ -53,18 +53,21 @@ void Model::Architecture::connector()
                 }    
             }
 
+            // Logs
+#if DEBUG
             std::cout << "\nInbound layer of " << layers[i].name << " is: "<<  name << std::endl;
             std::cout << "\nLayer ID: " << i << " Inbound ID: "<<  j << std::endl;
+#endif
             if (layers[i].layer_type == Layer::Layer_Type::Conv2D)
             {
                 if (layers[i].padding_type == Layer::Padding_Type::same)
                 {
-                    std::cout << "Conv with Padding" << std::endl;
+                    //std::cout << "Conv with Padding" << std::endl;
                     connToConvPadding(j, i);
                 }
                 else
                 {
-                    std::cout << "Conv without Padding" << std::endl;
+                    //std::cout << "Conv without Padding" << std::endl;
                     connToConv(j, i);
                 }
             }
@@ -153,6 +156,7 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
     std::cout << "Input Add: "<< &cur_neurons_ids << std::endl;
     std::cout << "Output Add: "<< &conv_output_neuron_ids << std::endl;
 #endif
+
     // Important. We need to re-organize the conv kernel to be more memory-friendly
     // Original layout: row->col->dep->filter
     // New layer: filter->dep->row->col
@@ -284,26 +288,29 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
         }
     }
     // std::cout << "\n";
-    conv_output_dims.push_back(conv_output_dims_x);
-    conv_output_dims.push_back(conv_output_dims_y);
-    conv_output_dims.push_back(conv_kernel_dims[3]);
+    conv_output_dims[0] = conv_output_dims_x;
+    conv_output_dims[1] = conv_output_dims_y;
+    conv_output_dims[2] = conv_kernel_dims[3];
 }
 
 void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next_layer_id)
 {
 
-    std::cout << cur_layer_id << ":" << next_layer_id << std::endl;
+
     auto &ori_neurons_dims = layers[cur_layer_id].output_dims;
     auto &ori_neurons_ids = layers[cur_layer_id].output_neuron_ids;
 
 #if DEBUG
+    std::cout << cur_layer_id << ":" << next_layer_id << std::endl;
     std::cout <<"Current Neuron IDs Size: " << ori_neurons_ids.size()  << std::endl;
 #endif
+
     auto &conv_kernel_dims = layers[next_layer_id].w_dims;
     auto &conv_kernel_weights = layers[next_layer_id].weights;
     auto &conv_strides = layers[next_layer_id].strides;
     auto &conv_output_dims = layers[next_layer_id].output_dims;
     auto &conv_output_neuron_ids = layers[next_layer_id].output_neuron_ids;
+
 #if DEBUG
     std::cout << "Input Add: "<< &ori_neurons_ids << std::endl;
     std::cout << "Output Add: "<< &conv_output_neuron_ids << std::endl;
@@ -485,14 +492,16 @@ void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next
             }
         }
     }
-    conv_output_dims.push_back(conv_output_dims_x);
-    conv_output_dims.push_back(conv_output_dims_y);
-    conv_output_dims.push_back(conv_kernel_dims[3]);
+    conv_output_dims[0] = conv_output_dims_x;
+    conv_output_dims[1] = conv_output_dims_y;
+    conv_output_dims[2] = conv_kernel_dims[3];
 }
 
 void Model::Architecture::connToAct(unsigned cur_layer_id, unsigned next_layer_id)
 {
-    auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
+
+
+	auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
     auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
 
     auto &output_dims = layers[cur_layer_id].output_dims;
@@ -541,7 +550,7 @@ void Model::Architecture::connToPadding(unsigned cur_layer_id,
     auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
 
     // TODO: Assumption - maximum of only 3 dimensions will be processed.
-    auto &padding_dims = layers[cur_layer_id].output_dims;
+    auto &padding_dims = layers[next_layer_id].output_dims;
     auto &output_neuron_ids = layers[next_layer_id].output_neuron_ids;
 
     padding_dims[0] = cur_neurons_dims[0] + layers[next_layer_id].padding[0];
@@ -571,6 +580,7 @@ void Model::Architecture::connToNorm(unsigned cur_layer_id, unsigned next_layer_
 {
     auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
     auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
+
 
     auto &output_neuron_ids = layers[next_layer_id].output_neuron_ids;
     layers[next_layer_id].output_dims = layers[cur_layer_id].output_dims;
@@ -617,13 +627,14 @@ void Model::Architecture::connToPool(unsigned cur_layer_id, unsigned next_layer_
 {
     auto &cur_neurons_dims = layers[cur_layer_id].output_dims;
     auto &cur_neurons_ids = layers[cur_layer_id].output_neuron_ids;
-    std::cout << cur_layer_id << " : " << next_layer_id << std::endl;
+
     auto &pool_kernel_dims = layers[next_layer_id].w_dims;
     auto &pool_strides = layers[next_layer_id].strides;
     auto &pool_output_dims = layers[next_layer_id].output_dims;
     auto &pool_output_neuron_ids = layers[next_layer_id].output_neuron_ids;
 
 #if DEBUG
+    std::cout << cur_layer_id << " : " << next_layer_id << std::endl;
     std::cout << "Input Add: "<< &cur_neurons_ids << std::endl;
     std::cout << "Output Add: "<<&pool_output_neuron_ids << std::endl;
 #endif
@@ -698,9 +709,10 @@ void Model::Architecture::connToPool(unsigned cur_layer_id, unsigned next_layer_
         }
     }
 
-    pool_output_dims.push_back(pool_output_dims_x);
-    pool_output_dims.push_back(pool_output_dims_y);
-    pool_output_dims.push_back(pool_kernel_dims[3]);
+    pool_output_dims[0] = pool_output_dims_x;
+    pool_output_dims[1] = pool_output_dims_y;
+    pool_output_dims[2] = pool_kernel_dims[3];
+
 }
 
 void Model::Architecture::connToFlat(unsigned cur_layer_id, unsigned next_layer_id)
@@ -710,6 +722,7 @@ void Model::Architecture::connToFlat(unsigned cur_layer_id, unsigned next_layer_
 
     auto &output_dims = layers[next_layer_id].output_dims;
     auto &output_neuron_ids = layers[next_layer_id].output_neuron_ids;
+
 
     uint64_t out_neuron_id_track = cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
 
@@ -751,10 +764,9 @@ void Model::Architecture::connToDense(unsigned cur_layer_id, unsigned next_layer
     auto &dense_weights = layers[next_layer_id].weights;
     auto &output_dims = layers[next_layer_id].output_dims;
     auto &output_neuron_ids = layers[next_layer_id].output_neuron_ids;
-    
-    std::string out_layer_name = layers[next_layer_id].name;
 
     uint64_t out_neuron_id_track = cur_neurons_ids[cur_neurons_ids.size() - 1] + 1;
+    std::string out_layer_name = layers[next_layer_id].name;
 
     uint64_t data_dim = 1;
     for (auto dim : cur_neurons_dims) { data_dim *= dim; }
@@ -839,7 +851,7 @@ void Model::Architecture::setOutRoot(std::string &out_root)
 void Model::Architecture::printConns(std::string &out_root)
 {
     // Txt record
-    std::string conns_out_txt = out_root + "connection_info.txt";
+    std::string conns_out_txt = out_root + "lconnection_info.txt";
     std::ofstream conns_out(conns_out_txt);
 
     //std::string weights_out_txt = out_root + ".weight_info.txt";
@@ -929,9 +941,9 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                         }
                     }
                 }
-                std::cout <<"Layer Name: " << name << " Dimensions: << " << out_neuro_ids.size()  << std::endl;
                 
                 
+
                 layer_counter++;
             }
 
@@ -939,9 +951,9 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             std::string name = layer["config"]["name"];
             
             // ab3586
-            #if 1
-
-            std::cout << layer["name"] <<" : " << layer["class_name"] << "\n" << std::endl;
+            #if 0
+            std::cout << layer["name"] <<" : " << layer["class_name"] << std::endl;
+            //std::cout <<"Layer Name: " << name << " Dimensions: " << out_neuro_ids.size()  << std::endl;
             #endif
 
             Layer::Layer_Type layer_type = Layer::Layer_Type::MAX;
@@ -1013,7 +1025,6 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                 //purely for the sdf representation
                 std::vector<unsigned> kernel_size;
                 for (auto &dim : layer["config"]["pool_size"]) {
-                    std::cout << dim << std::endl;
                     kernel_size.push_back(dim);
                 }
                 arch.getLayer(name).setKernelSize(kernel_size);
@@ -1134,7 +1145,6 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                     }
                 }
             }
-            //std::cout << "" << std::endl;
         }
 
         //Processing layers' sdf representation
@@ -1470,10 +1480,6 @@ void Model::loadArch(std::string &arch_file_path)
 
             }
         }
-        
-        #if DEBUG
-        std::cout << "Reached Here" <<std::endl;
-        #endif 
 
         //Processing layers' sdf representation
         for (auto& layer: json_layers) 
@@ -1866,7 +1872,6 @@ void Model::extrWeights(hid_t id)
     while(getline(full_name, intermediate, '/'))
     {
         tokens.push_back(intermediate);
-        //std::cout << intermediate << std::endl;
     }
     // The secondary last element indicates the layer name
     // TODO, I'm not sure if this is always true. Need to do more research
@@ -1897,8 +1902,10 @@ void Model::extrWeights(hid_t id)
         Layer &layer = arch.getLayer(name);
         std::vector<unsigned> dims_vec(dims, dims + ndims);
         std::vector<float> rdata_vec(rdata, rdata + data_size);
+#if DEBUG
         //std::cout << "Layer name: " << tokens[tokens.size()-2] << std::endl;
         //std::cout << "Dims: " << dims << " " << dims + ndims<< std::endl;
+#endif
         layer.setWeights(dims_vec, rdata_vec);
     }
     else if (tokens[tokens.size() - 1].find("bias") != std::string::npos)
