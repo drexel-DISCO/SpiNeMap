@@ -167,10 +167,10 @@ void Model::Architecture::connToConv(unsigned cur_layer_id,
     unsigned filter_limit = conv_kernel_dims[3];
 
     std::string out_layer_name = layers[next_layer_id].name;
-    if(layers[cur_layer_id].layer_type == Layer::Layer_Type::ZeroPadding2D)
-    {
-    	out_layer_name = layers[cur_layer_id].inbound_layers[0];
-    }
+    //if(layers[cur_layer_id].layer_type == Layer::Layer_Type::ZeroPadding2D)
+    //{
+   // 	out_layer_name = layers[cur_layer_id].inbound_layers[0];
+    //}
     std::vector<float> conv_kernel_weights_format(filter_limit * 
                                                   dep_limit * 
                                                   row_limit * 
@@ -325,10 +325,10 @@ void Model::Architecture::connToConvPadding(unsigned cur_layer_id, unsigned next
     unsigned filter_limit = conv_kernel_dims[3];
 
     std::string out_layer_name = layers[next_layer_id].name;
-    if(layers[cur_layer_id].layer_type == Layer::Layer_Type::ZeroPadding2D)
-    {
-    	out_layer_name = layers[cur_layer_id].inbound_layers[0];
-    }
+   // if(layers[cur_layer_id].layer_type == Layer::Layer_Type::ZeroPadding2D)
+  //  {
+ //   	out_layer_name = layers[cur_layer_id].inbound_layers[0];
+  //  }
 
 
     std::vector<float> conv_kernel_weights_format(filter_limit * 
@@ -860,6 +860,27 @@ void Model::Architecture::printConns(std::string &out_root)
     for (int i = 0; i < layers.size() - 1; i++)
     {
         auto &output_neurons = layers[i].output_neuron_ids;
+        auto src_layer_name = layers[i].name;
+
+
+        if(layers[i].layer_type == Layer::Layer_Type::Concatenate\
+				|| layers[i].layer_type == Layer::Layer_Type::Dropout)
+        {
+        	continue;
+        }
+
+        auto outbound_layer = layers[i].outbound_layers[0];
+        auto out_layer = getLayer(outbound_layer);
+        if(out_layer.layer_type == Layer::Layer_Type::ZeroPadding2D)
+        {
+        	continue;
+        }
+
+        if(layers[i].layer_type == Layer::Layer_Type::ZeroPadding2D)
+        {
+        	src_layer_name = layers[i].inbound_layers[0];
+        }
+
 
         for (auto neuron : output_neurons)
         {            
@@ -871,7 +892,7 @@ void Model::Architecture::printConns(std::string &out_root)
             auto &layer_name = (*iter).second.out_layer_name;
 
            // weights_out << neuron << " ";
-            conns_out << '(' <<neuron <<','<< layers[i].name << ')' << " ";
+            conns_out << '(' <<neuron <<','<< src_layer_name << ')' << " ";
             for (unsigned j = 0; j < out_neurons_ids.size(); j++)
             {
               //  weights_out << weights[j] << " ";
@@ -928,6 +949,7 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                 arch.addLayer(name, layer_type);
                 arch.getLayer(name).setOutputDim(output_dims);
                 
+
                 auto &out_neuro_ids = arch.getLayer(name).output_neuron_ids;
                 
                 for (int k = 0; k < output_dims[2]; k++)
@@ -1033,6 +1055,8 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             if (class_name == "ZeroPadding2D")
             {
                 auto &padding= arch.getLayer(name).padding;
+
+                //std::cout << arch.getLayer(name).inbound_layers[0] << std::endl;
                 int pad_pix_per_dim = 0;
                 for (auto pad_dims : layer["config"]["padding"]) {
                     for (int num_pad_pix : pad_dims) {
@@ -1055,7 +1079,6 @@ void Model::loadArchNeuron(std::string &arch_file_path)
         for (auto& layer: json_layers) 
         {
             std::string layer_name = layer["name"];
-        
             auto& ll = arch.getLayer(layer["name"]);
 
             //if(ll.layer_type == Layer::Layer_Type::Concatenate \
@@ -1079,7 +1102,13 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             {  
                 std::string in_layer_s = (in_layer_info)[0];
                
+               // if(arch.getLayer(in_layer_s))
                 int new_layer = 1;
+
+                if(arch.getLayer(in_layer_s).layer_type == Layer::Layer_Type::Input)
+                {
+                	arch.getLayer(in_layer_s).outbound_layers.push_back(layer_name);
+                }
 
                 //std::cout << layer_name << std::endl;          
                 while(new_layer)
@@ -1120,11 +1149,13 @@ void Model::loadArchNeuron(std::string &arch_file_path)
 										//	|| in_layer.layer_type == Layer::Layer_Type::ZeroPadding2D)
 
 									{
-                                        in_layer_s = layer_s;
+
+                                    	in_layer_s = layer_s;
                                         new_layer = 1;
                                     }
                                     else
                                     {
+
                                         arch.getLayer(layer_name).inbound_layers.push_back(layer_s);
                                         arch.getLayer(layer_s).outbound_layers.push_back(layer_name);
                                     }
