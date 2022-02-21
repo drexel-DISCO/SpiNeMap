@@ -1,7 +1,7 @@
 #include "NoS.h"
 
 void NoS::removeComment(istream &in) {
-	while (in.peek() == '\n' || in.peek() == '\t' || in.peek() == '#') {
+    while (in.peek() == '\n' || in.peek() == '\t' || in.peek() == '#') {
 		in.ignore(10240, '\n');
 	}
 }
@@ -66,7 +66,7 @@ void NoS::loadNodeConfiguration() {
 		}
 		else {
 			cout << "Errors in seting PEs, exit!\n";
-			assert(false);
+            assert(false);
 		}
 	}
 
@@ -74,6 +74,7 @@ void NoS::loadNodeConfiguration() {
 	if(GlobalParams::output_mode != EX_STAT_MODE){
 		cout << "PE configuration loaded and instances are initialised!\n\n";
 	}
+
 }
 
 void NoS::loadSegmentConfiguration() {

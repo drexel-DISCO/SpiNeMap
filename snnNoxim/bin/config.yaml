@@ -1,4 +1,3 @@
-network_type: "MESH"
 rout_only_nodes: []
 # number of router cycles to process a flit
 router_cycle: 2
@@ -148,8 +147,7 @@ traffic_distribution: TRAFFIC_TRACE_BASED
 log_mode: true
 log_filename: "log_cluster_2x2.txt"
 
-
-network_type: "MESH"
+network_type: "SEGMENT"
 dim_x: 5
 dim_y: 5
 flit_size: 32

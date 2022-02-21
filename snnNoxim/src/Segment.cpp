@@ -2,7 +2,8 @@
 
 void Segment::module_initialisation() {
 
-	switches = new Switch*[number_of_switches];
+	// allocation all the memory needed for all the switches in the segment. 
+    switches = new Switch*[number_of_switches];
 
 	for (int i = 0; i < number_of_switches; i++) {
         char module_name[10];

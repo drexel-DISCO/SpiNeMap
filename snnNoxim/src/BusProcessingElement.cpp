@@ -45,7 +45,6 @@ void BusProcessingElement::generateSpike() {
 	// Spike!
 	if (counter == spike_time_point) {
         
-	    cout << "Reached Here";
 		Spike spike;
 		spike.src_id = id;
 		spike.spike_id = spike_counter;
@@ -87,7 +86,6 @@ void BusProcessingElement::generateSpike() {
 
 void BusProcessingElement::processSpike() {
     
-    cout << "Reached Here";
 	for (int i = 0; i < number_of_input; i++) {
 		Spike spike = in[i].read();
 		if ((spike.src_id) != -1 && (spike.spiking_time != 0)) {
@@ -113,7 +111,6 @@ void BusProcessingElement::processSpike() {
 }
 
 void BusProcessingElement::processClock() {
-	cout << "Reached Here";
     generateSpike();
 	
     processSpike();

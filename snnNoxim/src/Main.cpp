@@ -192,11 +192,12 @@ int sc_main(int arg_num, char *arg_vet[]) {
     // Close the simulation
     if (GlobalParams::trace_mode)
         sc_close_vcd_trace_file(tf);
+
     if (GlobalParams::output_mode == EX_STAT_MODE) {
         
         if (GlobalParams::network_type == "SEGMENT") {
             cout << "IMEC Segmented Bus Simulation completed.\n";
-            cout << " ##Designed by Yuefeng Wu @ imec NL##\n";
+            cout << " ##Designed by Yuefeng Wu @ imec NL and Adarsha Balaji @Drexel##\n";
             cout << "Simulator is based on Noxim Architecture.\n";
         } else {
             cout << "Noxim simulation completed." << endl;

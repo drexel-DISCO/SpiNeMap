@@ -74,8 +74,8 @@ SC_MODULE(Segment) {
 	void module_initialisation();
 	void connection_configuration();
 
-	Segment(sc_module_name module_name, int _segment_id, int _number_of_switches):sc_module(module_name) {
-
+	Segment(sc_module_name module_name, int _segment_id, int _number_of_switches):sc_module(module_name) 
+    {
 		id = _segment_id;
 		//type = segment_type;
 
