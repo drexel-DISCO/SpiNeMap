@@ -24,12 +24,12 @@ int main(int argc, char *argv[])
         weight_file = "";
     }
 
+    std::cout << "Loading Architecture File!" << std::endl;
     NCC::NCC_FrontEnd::Model model(arch_file, weight_file);
-
+    std::cout << "Generating Connection Information!" << std::endl;
     model.connector();
-    std::cout << "\n";
-    //model.printLayers();
-    std::cout << "\n";
-    std::string out_root = "./";//arch_file.substr(0, arch_file.find(".json"));
+    std::string out_root = arch_file.substr(0, arch_file.find(".json"));
+    std::cout << "Printing Connection Information!" << std::endl;
     model.printConns(out_root);
+    std::cout << "Output file location: " << "./" << out_root << std::endl;
 }

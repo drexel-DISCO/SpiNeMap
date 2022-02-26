@@ -32,7 +32,7 @@ void Model::Architecture::connector()
 {
     // TODO : ab3586: Connection function currently connects layers sequentially. Look for in_bound layers. 
     int prev = 0;
-    for (int i = 0; i < layers.size() - 1; i++)
+    for (int i = 0; i < layers.size(); i++)
     {
         // ab3586
         // find the inbound layer IDs
@@ -851,7 +851,7 @@ void Model::Architecture::setOutRoot(std::string &out_root)
 void Model::Architecture::printConns(std::string &out_root)
 {
     // Txt record
-    std::string conns_out_txt = out_root + "connection_info.txt";
+    std::string conns_out_txt = out_root + ".connection_info.txt";
     std::ofstream conns_out(conns_out_txt);
 
     //std::string weights_out_txt = out_root + ".weight_info.txt";
@@ -918,9 +918,14 @@ void Model::loadArchNeuron(std::string &arch_file_path)
     try
     {
         std::ifstream arch_file(arch_file_path);
-        json js;
-        arch_file >> js;
+        //std::ifstream arch_file("");
+        json js = json::parse(arch_file);
+        //arch_file >> js;
+
         auto json_layers = js["config"]["layers"];
+        
+        // Sequential or Functional
+        auto model_type = js["class_name"];
 
         unsigned layer_counter = 0;
         std::unordered_map<std::string, std::vector<std::string>> concat_input;
@@ -974,7 +979,7 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             
             // ab3586
             #if 0
-            std::cout << layer["name"] <<" : " << layer["class_name"] << std::endl;
+            std::cout << name <<" : " << layer["class_name"] << std::endl;
             //std::cout <<"Layer Name: " << name << " Dimensions: " << out_neuro_ids.size()  << std::endl;
             #endif
 
@@ -1075,113 +1080,137 @@ void Model::loadArchNeuron(std::string &arch_file_path)
         
 
 
-        // Processing layers' connectivity
-        for (auto& layer: json_layers) 
+        // Processing layers' connectivity : Populate the inbound and outbound DS with layer connectivity info.
+        if (model_type == "Sequential")
         {
-            std::string layer_name = layer["name"];
-            auto& ll = arch.getLayer(layer["name"]);
+        	int layer_num = 0;
+        	std::string inbound_name = "input";
+        	for (auto& layer: json_layers)
+        	{
+        		std::string layer_name = layer["config"]["name"];
 
-            //if(ll.layer_type == Layer::Layer_Type::Concatenate \
-                  ||  ll.layer_type == Layer::Layer_Type::Dropout \
-                   ||  ll.layer_type == Layer::Layer_Type::BatchNormalization\
-                    || ll.layer_type == Layer::Layer_Type::Activation\
-					|| ll.layer_type == Layer::Layer_Type::ZeroPadding2D)
+				arch.getLayer(layer_name).inbound_layers.push_back(inbound_name);
+				arch.getLayer(inbound_name).outbound_layers.push_back(layer_name);
 
-            if(ll.layer_type == Layer::Layer_Type::Concatenate \
-                   ||  ll.layer_type == Layer::Layer_Type::Dropout)
-                  // ||  ll.layer_type == Layer::Layer_Type::BatchNormalization
-                   // || ll.layer_type == Layer::Layer_Type::Activation\
-					//|| ll.layer_type == Layer::Layer_Type::ZeroPadding2D)
+				inbound_name = layer_name;
 
-            {
-                continue;
-			}
+        	}
 
-    
-            for (auto& in_layer_info : layer["inbound_nodes"][0]) 
-            {  
-                std::string in_layer_s = (in_layer_info)[0];
-               
-               // if(arch.getLayer(in_layer_s))
-                int new_layer = 1;
-
-                if(arch.getLayer(in_layer_s).layer_type == Layer::Layer_Type::Input)
-                {
-                	arch.getLayer(in_layer_s).outbound_layers.push_back(layer_name);
-                }
-
-                //std::cout << layer_name << std::endl;          
-                while(new_layer)
-                {
-                    auto& inLayer = arch.getLayer(in_layer_s);
-
-                  //  if(inLayer.layer_type == Layer::Layer_Type::Concatenate \
-                           ||  inLayer.layer_type == Layer::Layer_Type::Dropout \
-                           ||  inLayer.layer_type == Layer::Layer_Type::BatchNormalization\
-                            || inLayer.layer_type == Layer::Layer_Type::Activation\
-							|| inLayer.layer_type == Layer::Layer_Type::ZeroPadding2D)
-
-                    if(inLayer.layer_type == Layer::Layer_Type::Concatenate \
-                           ||  inLayer.layer_type == Layer::Layer_Type::Dropout)
-                           //||  inLayer.layer_type == Layer::Layer_Type::BatchNormalization
-                           // || inLayer.layer_type == Layer::Layer_Type::Activation\
-							//|| inLayer.layer_type == Layer::Layer_Type::ZeroPadding2D)
-
-					{
-                        
-                        new_layer = 1; 
-                        // find the layer info in the JSON file
-                        for(auto& s_layer: json_layers)
-                        {
-                            std::string l_s = s_layer["name"];
-                            if(l_s.compare(in_layer_s) == 0)
-                            {
-                                for(auto& inn_layer_info : s_layer["inbound_nodes"][0])
-                                {
-                                    std::string layer_s = (inn_layer_info)[0];
-                                    new_layer = 0;
-
-                                    auto& in_layer = arch.getLayer(layer_s);
-                                    if(in_layer.layer_type == Layer::Layer_Type::Concatenate \
-                                            || in_layer.layer_type == Layer::Layer_Type::Dropout )
-                                           // || in_layer.layer_type == Layer::Layer_Type::BatchNormalization
-                                         //   || in_layer.layer_type == Layer::Layer_Type::Activation\
-										//	|| in_layer.layer_type == Layer::Layer_Type::ZeroPadding2D)
-
-									{
-
-                                    	in_layer_s = layer_s;
-                                        new_layer = 1;
-                                    }
-                                    else
-                                    {
-
-                                        arch.getLayer(layer_name).inbound_layers.push_back(layer_s);
-                                        arch.getLayer(layer_s).outbound_layers.push_back(layer_name);
-                                    }
-
-                                }
-                                break;
-                            }
-
-                        }
-                       
-                    }
-                    else
-                    {
-                        arch.getLayer(layer_name).inbound_layers.push_back(in_layer_s);
-                        arch.getLayer(in_layer_s).outbound_layers.push_back(layer_name);
-                        new_layer = 0;
-                        //std::cout << layer_name << " : "<< in_layer_s << std::endl;          
-                    }
-                }
-            }
         }
+        else if(model_type == "Functional")
+        {
+			for (auto& layer: json_layers)
+			{
+				// NOTE: layer[config][name] is consistent across model types.
+				// layer[name] only exists for Functional Models.
+				std::string layer_name = layer["config"]["name"];
+				auto& ll = arch.getLayer(layer["config"]["name"]);
 
+				//if(ll.layer_type == Layer::Layer_Type::Concatenate \
+					  ||  ll.layer_type == Layer::Layer_Type::Dropout \
+					   ||  ll.layer_type == Layer::Layer_Type::BatchNormalization\
+						|| ll.layer_type == Layer::Layer_Type::Activation\
+						|| ll.layer_type == Layer::Layer_Type::ZeroPadding2D)
+
+				if(ll.layer_type == Layer::Layer_Type::Concatenate \
+					   ||  ll.layer_type == Layer::Layer_Type::Dropout)
+					  // ||  ll.layer_type == Layer::Layer_Type::BatchNormalization
+					   // || ll.layer_type == Layer::Layer_Type::Activation\
+						//|| ll.layer_type == Layer::Layer_Type::ZeroPadding2D)
+
+				{
+					continue;
+				}
+
+
+				for (auto& in_layer_info : layer["inbound_nodes"][0])
+				{
+					std::string in_layer_s = (in_layer_info)[0];
+
+				   // if(arch.getLayer(in_layer_s))
+					int new_layer = 1;
+
+					if(arch.getLayer(in_layer_s).layer_type == Layer::Layer_Type::Input)
+					{
+						arch.getLayer(in_layer_s).outbound_layers.push_back(layer_name);
+					}
+
+					//std::cout << layer_name << std::endl;
+					while(new_layer)
+					{
+						auto& inLayer = arch.getLayer(in_layer_s);
+
+					  //  if(inLayer.layer_type == Layer::Layer_Type::Concatenate \
+							   ||  inLayer.layer_type == Layer::Layer_Type::Dropout \
+							   ||  inLayer.layer_type == Layer::Layer_Type::BatchNormalization\
+								|| inLayer.layer_type == Layer::Layer_Type::Activation\
+								|| inLayer.layer_type == Layer::Layer_Type::ZeroPadding2D)
+
+						if(inLayer.layer_type == Layer::Layer_Type::Concatenate \
+							   ||  inLayer.layer_type == Layer::Layer_Type::Dropout)
+							   //||  inLayer.layer_type == Layer::Layer_Type::BatchNormalization
+							   // || inLayer.layer_type == Layer::Layer_Type::Activation\
+								//|| inLayer.layer_type == Layer::Layer_Type::ZeroPadding2D)
+
+						{
+
+							new_layer = 1;
+							// find the layer info in the JSON file
+							for(auto& s_layer: json_layers)
+							{
+								std::string l_s = s_layer["config"]["name"];
+								if(l_s.compare(in_layer_s) == 0)
+								{
+									for(auto& inn_layer_info : s_layer["inbound_nodes"][0])
+									{
+										std::string layer_s = (inn_layer_info)[0];
+										new_layer = 0;
+
+										auto& in_layer = arch.getLayer(layer_s);
+										if(in_layer.layer_type == Layer::Layer_Type::Concatenate \
+												|| in_layer.layer_type == Layer::Layer_Type::Dropout )
+											   // || in_layer.layer_type == Layer::Layer_Type::BatchNormalization
+											 //   || in_layer.layer_type == Layer::Layer_Type::Activation\
+											//	|| in_layer.layer_type == Layer::Layer_Type::ZeroPadding2D)
+
+										{
+
+											in_layer_s = layer_s;
+											new_layer = 1;
+										}
+										else
+										{
+
+											arch.getLayer(layer_name).inbound_layers.push_back(layer_s);
+											arch.getLayer(layer_s).outbound_layers.push_back(layer_name);
+										}
+
+									}
+									break;
+								}
+
+							}
+
+						}
+						else
+						{
+							arch.getLayer(layer_name).inbound_layers.push_back(in_layer_s);
+							arch.getLayer(in_layer_s).outbound_layers.push_back(layer_name);
+							new_layer = 0;
+							//std::cout << layer_name << " : "<< in_layer_s << std::endl;
+						}
+					}
+				}
+			}
+        }
+        else
+        {
+        	std::cerr << "Error: Unsupported model type: " << model_type << std::endl; exit(0);
+        }
         //Processing layers' sdf representation
         for (auto& layer: json_layers) 
         {
-            std::string layer_name = layer["name"];
+            std::string layer_name = layer["config"]["name"];
             auto& layer_obj = arch.getLayer(layer_name);
             std::vector<unsigned>& output_dims = layer_obj.output_dims;
             std::vector<unsigned> input_dims(3, 0);
@@ -2012,7 +2041,6 @@ void Model::extrWeights(hid_t id)
         Layer &layer = arch.getLayer(name);
         std::vector<unsigned> dims_vec(dims, dims + ndims);
         std::vector<float> rdata_vec(rdata, rdata + data_size);
-
         layer.setGamma(dims_vec, rdata_vec);
     }
     else if (tokens[tokens.size() - 1].find("moving_mean") != std::string::npos)
