@@ -978,7 +978,7 @@ void Model::loadArchNeuron(std::string &arch_file_path)
             std::string name = layer["config"]["name"];
             
             // ab3586
-            #if 1
+            #if DEBUG
             std::cout << name <<" : " << layer["class_name"] << std::endl;
             //std::cout <<"Layer Name: " << name << " Dimensions: " << out_neuro_ids.size()  << std::endl;
             #endif
