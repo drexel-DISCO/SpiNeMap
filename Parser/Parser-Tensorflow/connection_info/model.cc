@@ -948,8 +948,9 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                 
                 //input_shape.erase(input_shape.begin());
                 output_dims.erase(output_dims.begin()); //Delete the first null (see json for more details)
-               
+
                 std::string name = "input";
+
                 Layer::Layer_Type layer_type = Layer::Layer_Type::Input;
                 arch.addLayer(name, layer_type);
                 arch.getLayer(name).setOutputDim(output_dims);
@@ -968,17 +969,16 @@ void Model::loadArchNeuron(std::string &arch_file_path)
                         }
                     }
                 }
-                
-                
 
                 layer_counter++;
+
             }
 
             std::string class_name = layer["class_name"];
             std::string name = layer["config"]["name"];
             
             // ab3586
-            #if 0
+            #if 1
             std::cout << name <<" : " << layer["class_name"] << std::endl;
             //std::cout <<"Layer Name: " << name << " Dimensions: " << out_neuro_ids.size()  << std::endl;
             #endif
@@ -1084,10 +1084,19 @@ void Model::loadArchNeuron(std::string &arch_file_path)
         if (model_type == "Sequential")
         {
         	int layer_num = 0;
-        	std::string inbound_name = "input";
+        	std::string inbound_name = "";
+
+
         	for (auto& layer: json_layers)
         	{
+
         		std::string layer_name = layer["config"]["name"];
+
+            	if(layer["class_name"] == "InputLayer")
+            	{
+    				inbound_name = layer_name;
+            		continue;
+            	}
 
 				arch.getLayer(layer_name).inbound_layers.push_back(inbound_name);
 				arch.getLayer(inbound_name).outbound_layers.push_back(layer_name);
