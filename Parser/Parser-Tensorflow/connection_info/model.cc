@@ -1084,7 +1084,7 @@ void Model::loadArchNeuron(std::string &arch_file_path)
         if (model_type == "Sequential")
         {
         	int layer_num = 0;
-        	std::string inbound_name = "";
+        	std::string inbound_name = "input";
 
 
         	for (auto& layer: json_layers)
