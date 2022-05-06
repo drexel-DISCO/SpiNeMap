@@ -23,7 +23,7 @@ bool NeuralNetworkParser::loadNodeMap(const char * fname)
     ifstream fin(fname, ios::in);
     if (!fin)
     return false;
-    cout << fname << endl;
+    
     // Initialize variables
     neuron_table.clear();
     // Cycle reading file

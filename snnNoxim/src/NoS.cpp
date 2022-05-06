@@ -22,9 +22,9 @@ void NoS::reloadSwitchConfiguration() {
     }
 }
 
-void NoS::loadNodeConfiguration() {
+void NoS::loadNodeConfiguration(const char * fname) {
 	ifstream pe_conf;
-	pe_conf.open("pe.conf", ios::in);
+	pe_conf.open(fname, ios::in);
 
 	// Fail to open the file, exit!
 	if (!pe_conf.is_open()) {
@@ -37,7 +37,8 @@ void NoS::loadNodeConfiguration() {
 	// Begin to load PE configrations
 	int pe_id;
 	int number_of_input;
-
+    
+    cout << "Reached Here" << endl;
 	pe_conf >> number_of_pes;
 	pes = new BusProcessingElement*[number_of_pes];
     if (GlobalParams::output_mode != EX_STAT_MODE){
@@ -77,9 +78,9 @@ void NoS::loadNodeConfiguration() {
 
 }
 
-void NoS::loadSegmentConfiguration() {
+void NoS::loadSegmentConfiguration(const char * fname) {
 	ifstream segment_conf;
-	segment_conf.open("segment.conf", ios::in);
+	segment_conf.open(fname, ios::in);
 
 	// Tackle the condition failing to load the configuration
 	if (!segment_conf.is_open()) {
@@ -151,9 +152,9 @@ void NoS::loadSegmentConfiguration() {
 	}
 }
 
-void NoS::loadMasterConnection() {
+void NoS::loadMasterConnection(const char* fname) {
 	ifstream master_connection_conf;
-	master_connection_conf.open("master_connection.conf", ios::in);
+	master_connection_conf.open(fname, ios::in);
 
 	if (!master_connection_conf.is_open()) {
 		cout << "Cannot open the master configuration file, exit!\n";
@@ -191,9 +192,11 @@ void NoS::loadMasterConnection() {
 	}
 }
 
-void NoS::loadSlaveConnection() {
+void NoS::loadSlaveConnection(const char* fname) {
 	ifstream slave_connection_conf;
-	slave_connection_conf.open("slave_connection.conf", ios::in);
+	slave_connection_conf.open(fname, ios::in);
+    
+    cout << fname << endl;
 
 	if (!slave_connection_conf.is_open()) {
 		cout << "Cannot open the slave configuration file, exit!\n";
@@ -236,8 +239,8 @@ void NoS::loadSlaveConnection() {
 
 
 void NoS::buildNetwork() {
-	loadNodeConfiguration();
-	loadSegmentConfiguration();
-	loadMasterConnection();
-	loadSlaveConnection();
+	loadNodeConfiguration(GlobalParams::pe_filename.c_str());
+	loadSegmentConfiguration(GlobalParams::segment_filename.c_str());
+	loadMasterConnection(GlobalParams::master_filename.c_str());
+	loadSlaveConnection(GlobalParams::slave_filename.c_str());
 }

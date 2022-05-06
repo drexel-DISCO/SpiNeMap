@@ -162,6 +162,11 @@ struct GlobalParams {
     static double locality;
     static string traffic_distribution;
     static string traffic_filename;
+    // Segmented Bus
+    static string master_filename;
+    static string slave_filename;
+    static string pe_filename;
+    static string segment_filename;
 //    static string traffic_trace_filename;
     static bool cluster_traffic; // indicate whether the input traffic is between clusters or neurons
     static string neuron_node_filename;

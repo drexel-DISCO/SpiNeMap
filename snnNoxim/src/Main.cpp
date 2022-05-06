@@ -64,7 +64,7 @@ int sc_main(int arg_num, char *arg_vet[]) {
              << endl;
     }
 
-    //cout << "Checkpoint 1 : NoC to be created. \n";
+    // load the configuration of the MESH/SegmentedBus
     configure(arg_num, arg_vet);
     
     /* 
@@ -90,8 +90,8 @@ int sc_main(int arg_num, char *arg_vet[]) {
 
     // Initialise trace
     sc_trace_file *tf = NULL;
+    
 
-   // cout << "Checkpoint 7" <<endl;
     if (GlobalParams::network_type == "MESH") {
         // NoC instance
         n = new NoC("NoC");
@@ -142,8 +142,8 @@ int sc_main(int arg_num, char *arg_vet[]) {
         if (GlobalParams::output_mode != EX_STAT_MODE) {
             cout << "Segmented bus mode enabled!!!" << endl;
         }
-        // NoC instance
-
+        
+        // Create an instance of a Segmented Bus
         nos = new NoS("NoS");
         if (GlobalParams::output_mode != EX_STAT_MODE) {
             std::cout << "Created Network of Segments!" << endl;

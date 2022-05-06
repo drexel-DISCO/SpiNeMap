@@ -63,7 +63,6 @@ void loadConfiguration() {
     GlobalParams::routing_filename = config["routing_filename"].as<string>();
     GlobalParams::selection_strategy = config["selection_strategy"].as<string>();
 
-    //cout << "Checkpoint 5" <<endl;
     //GlobalParams::selection_filename = config["selection_filename"].as<string>();
     //std::cout << "selection filename: " << GlobalParams::selection_filename << endl;
     GlobalParams::packet_injection_rate = config["packet_injection_rate"].as<double>();
@@ -71,7 +70,13 @@ void loadConfiguration() {
     GlobalParams::traffic_distribution = config["traffic_distribution"].as<string>();
     GlobalParams::traffic_filename = config["traffic_filename"].as<string>();
     //GlobalParams::traffic_trace_filename = config["traffic_trace_filename"].as<string>();
-    
+   
+    // ab3586: Segmented Bus configuration files
+    GlobalParams::master_filename = config["master_filename"].as<string>();
+    GlobalParams::slave_filename = config["slave_filename"].as<string>();
+    GlobalParams::pe_filename = config["pe_filename"].as<string>();
+    GlobalParams::segment_filename = config["segment_filename"].as<string>();
+
     GlobalParams::cluster_traffic = config["cluster_traffic"].as<bool>();
     GlobalParams::neuron_node_filename = config["neuron_node_filename"].as<string>();
     //std::cout << "neuron_node_filename: " << GlobalParams::neuron_node_filename << endl;

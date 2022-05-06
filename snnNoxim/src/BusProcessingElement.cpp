@@ -1,5 +1,7 @@
 #include "BusProcessingElement.h"
 
+/* Function to load the spike times of every node. Separate Traffic*.tr files are created to store the spike times of each node*/
+/*TODO: Can we use a single traffic file to load all the traffic as in NoC ? */ 
 void BusProcessingElement::loadTraffic() {
 	ifstream traffic_file;
 	char file_name[20];
@@ -38,12 +40,17 @@ void BusProcessingElement::loadTraffic() {
 
 }
 
+/* Function to generate spike packets stored in the spiking_time_list data struct for every node*/
+/* TODO: The calculation of time always is in us (micro seconds). Check to see if change of frequency in config.yaml effects this */ 
 void BusProcessingElement::generateSpike() {
 	if (counter >= 0) {
 		counter++;
 	}
 	// Spike!
-	if (counter == spike_time_point) {
+    // get cycle count 
+    double now = sc_time_stamp().to_double() / GlobalParams::clock_period_ps;
+    
+	if (now == spike_time_point*10) {
         
 		Spike spike;
 		spike.src_id = id;
@@ -54,7 +61,7 @@ void BusProcessingElement::generateSpike() {
 
 		spike_counter++;
 		out = spike;
-
+         
 		if (spike.spiking_time!=0){
 			if (GlobalParams::output_mode == DEBUG_MODE) {
 				cout << "Node ";
@@ -84,15 +91,16 @@ void BusProcessingElement::generateSpike() {
 	}
 }
 
+/* Check for a spike received from the switch/bus. The packet is not processed as no processing element functionality has been added.*/
 void BusProcessingElement::processSpike() {
     
 	for (int i = 0; i < number_of_input; i++) {
 		Spike spike = in[i].read();
 		if ((spike.src_id) != -1 && (spike.spiking_time != 0)) {
-			if (GlobalParams::output_mode == DEBUG_MODE) {
+            if (GlobalParams::output_mode == DEBUG_MODE) {
 				cout << "Node ";
     			cout << id << " at time " << sc_time_stamp() << " received a spike from ";
-    			cout << spike.src_id << " with " << spike.intra_seg_hop_num << " hops." << endl;
+                cout << spike.src_id << " with " << spike.intra_seg_hop_num << " hops." << endl;
 			}
 			else if (GlobalParams::output_mode == EX_STAT_MODE){
 				cout<<"R,"

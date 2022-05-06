@@ -37,6 +37,10 @@ double GlobalParams::locality;
 string GlobalParams::traffic_distribution;
 string GlobalParams::traffic_filename;
 //string GlobalParams::traffic_trace_filename;
+string GlobalParams::master_filename;
+string GlobalParams::slave_filename;
+string GlobalParams::pe_filename;
+string GlobalParams::segment_filename;
 bool GlobalParams::cluster_traffic; // indicate whether the input traffic is between clusters or neurons
 string GlobalParams::neuron_node_filename;
 string GlobalParams::neural_network_filename;

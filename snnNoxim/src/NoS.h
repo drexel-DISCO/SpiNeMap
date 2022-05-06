@@ -54,10 +54,10 @@ SC_MODULE(NoS) {
 
 private:
 	void removeComment(istream &in);
-	void loadNodeConfiguration();
-	void loadSegmentConfiguration();
-	void loadMasterConnection();
-	void loadSlaveConnection();
+	void loadNodeConfiguration(const char * fname);
+	void loadSegmentConfiguration(const char * fname);
+	void loadMasterConnection(const char * fname);
+	void loadSlaveConnection(const char * fname);
 };
 
 #endif
