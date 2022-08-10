@@ -46,6 +46,7 @@ class Model
             Dense, // dense (fully-connected) layer
             Ignore,
             Concatenate,
+            Add,
             MAX
         }layer_type = Layer_Type::MAX;
 
@@ -58,7 +59,7 @@ class Model
             MULT        = 2,
             INIT        = 1, //For Padding layers
             MAX         = 0
-        } cost = Cost::MAX;
+        }cost = Cost::MAX;
 
         // Lacking:
         // ZeroPadding2D, Concatenate for DenseNet
@@ -66,18 +67,6 @@ class Model
         Layer() {}
         Layer(std::string &_name, Layer_Type &_type) : name(_name), layer_type(_type) {}
 
-        void setWeights(std::vector<unsigned> &_w_dims,
-                        std::vector<float> &_weights)
-        {
-            w_dims = _w_dims;
-            weights = _weights;
-        }
-        void setBiases(std::vector<unsigned> &_b_dims,
-                       std::vector<float> &_bias)
-        {
-            b_dims = _b_dims;
-            bias = _bias;
-        }
         void setStrides(std::vector<unsigned> &_strides)
         {
             strides = _strides;
@@ -129,10 +118,10 @@ class Model
         uint64_t depth = -1;
 
         // weights/biases for CONV2D/Dense
-        std::vector<unsigned> w_dims; // dims of the weights
-        std::vector<float> weights; // all the weight
-        std::vector<unsigned> b_dims; // dims of the bias
-        std::vector<float> bias; // all the bias
+        // std::vector<unsigned> w_dims; // dims of the weights
+        // std::vector<float> weights; // all the weight
+        // std::vector<unsigned> b_dims; // dims of the bias
+        // std::vector<float> bias; // all the bias
 
         // Padding type of the layer, used for CONV2D
         enum class Padding_Type : int
@@ -142,10 +131,10 @@ class Model
         }padding_type = Padding_Type::valid;
         // strides, used for CONV2D/MaxPooling/AveragePooling
         std::vector<unsigned> strides;
-        //kernel size, used for CONV2D
+        // kernel size, used for CONV2D
         std::vector<unsigned> kernel_sz;
         std::vector<unsigned> padding;
-        //Num filters for CONV2D
+        // Num filters for CONV2D
         unsigned num_filter;
 
         // TODO, need to extract more information
@@ -163,7 +152,7 @@ class Model
         std::vector<unsigned> output_dims = {0, 0, 0}; // dimension of output
         std::vector<uint64_t> output_neuron_ids;
         uint64_t num_out_tok; // For sdf representation
-        uint64_t compute_time=0; //For sdf repre
+        uint64_t compute_time=0;
     };
 
     // Model - Architecture
@@ -171,6 +160,7 @@ class Model
     {
       protected:
         std::vector<Layer> layers;
+        int maxDepth;
 
       protected:
         struct ConnEntry
@@ -178,27 +168,15 @@ class Model
             ConnEntry(uint64_t _id, float _w)
             {
                 out_neurons_ids.push_back(_id);
-                weights.push_back(_w);
             }
 
             std::vector<uint64_t> out_neurons_ids;
-            std::vector<float> weights;
         };
         std::unordered_map<uint64_t, ConnEntry> connections;
-
-        void connToConv(unsigned, unsigned);
-        void connToConvPadding(unsigned, unsigned);
-        void connToAct(unsigned, unsigned);
-        void connToNorm(unsigned, unsigned);
-        void connToDrop(unsigned, unsigned);
-        void connToPool(unsigned, unsigned);
-        void connToFlat(unsigned, unsigned);
-        void connToDense(unsigned, unsigned);
 
         void layerOutput();
 
         std::ofstream conns_output;
-        std::ofstream weights_output;
 
       public:
         Architecture() {}
@@ -219,14 +197,11 @@ class Model
             exit(0);
         }
 
-        void connector();
-        void connectLayers();
-
-        void printConns(std::string &out_root);
         void printLayerConns(std::string &out_root);
         void printSdfRep(std::string &out_root);
 
-        void setOutRoot(std::string &out_root);
+        int getmaxLayerDepth() { return maxDepth; };
+        void setMaxLayerDepth();
 
         void printLayers() // Only used for small network debuggings.
         {
@@ -258,85 +233,11 @@ class Model
                 { std::cout << "Layer type: Ignore"; }
                 else { std::cerr << "Error: unsupported layer type\n"; exit(0); }
                 std::cout << "\n";
-/*
-                std::cout << "Dimension: ";
-                auto &w_dims = layer.w_dims;
-                auto &weights = layer.weights;
 
-                for (auto dim : w_dims) { std::cout << dim << " "; }
-                std::cout << "\n";
-
-                unsigned i = 0;
-                for (auto weight : weights)
-                {
-                    std::cout << weight << " ";
-                    if ((i + 1) % w_dims[w_dims.size() - 1] == 0)
-                    {
-                        std::cout << "\n";
-                    }
-                    i++;
-                }
-
-                auto &strides = layer.strides;
-                std::cout << "Strides: ";
-                for (auto stride : strides) { std::cout << stride << " "; }
-                std::cout << "\n";
-*/
                 auto &output_dims = layer.output_dims;
                 std::cout << "Output shape: ";
                 for (auto dim : output_dims) { std::cout << dim << " "; }
                 std::cout << "\n";
-                
-                auto &w_dims = layer.w_dims;
-                auto &weights = layer.weights;
-                auto &b_dims = layer.b_dims;
-                auto &bias = layer.bias;
-                if (weights.size())
-                {
-                    std::cout << "Weights dim (" << weights.size() << "): ";
-                    for (auto dim : w_dims) { std::cout << dim << " "; }
-                    std::cout << "\n";
-                }
-
-                if (bias.size())
-                {
-                    std::cout << "Bias dim (" << bias.size() << "): ";
-                    for (auto dim : b_dims) { std::cout << dim << " "; }
-                    std::cout << "\n";
-                }
-
-                std::cout << "Total params: " 
-                          << weights.size() + bias.size() << "\n";
-
-                std::cout << "\n";
-                // TODO, print neuron ID range
-                // auto &out_neuro_ids = layer.output_neuron_ids;
-                // std::cout << "Output neuron id range: "
-                //           << out_neuro_ids[0] << " -> " 
-                //           << out_neuro_ids[out_neuro_ids.size() - 1] 
-                //           << "\n\n";
-/*
-                auto &out_neuro_ids = layer.output_neuron_ids;
-                std::cout << "Output neuron id: ";
-                std::cout << "\n";
-                for (int k = 0; k < output_dims[2]; k++)
-                {
-                    for (int i = 0; i < output_dims[0]; i++)
-                    {
-                        for (int j = 0; j < output_dims[1]; j++)
-                        {
-                            std::cout << out_neuro_ids[
-                                k * output_dims[0] * output_dims[1] + 
-                                i * output_dims[1] + j] << " ";
-                        }
-                        std::cout << "\n";
-                    }
-                    std::cout << "\n";
-                }
-	
-                std::cout << "\n\n";
-*/
-                // exit(0);
             }
         }
         void labelLayerWithDepth(uint64_t starting_depth, std::set<std::string>&);
@@ -351,9 +252,6 @@ class Model
     Model(std::string &arch_file, std::string &weight_file)
     {
         loadArch(arch_file);
-        if (weight_file != "") {
-            loadWeights(weight_file);
-        }
     }
 
     Model(std::string &arch_file)
@@ -362,26 +260,15 @@ class Model
     }
 
     void printLayers() { arch.printLayers(); }
-
-    void connector() { arch.connector(); } 
-
-    void printConns(std::string &out_root) { arch.printConns(out_root); }
+    
     void printSdfRep(std::string &out_root) {arch.printSdfRep(out_root); }
     void printLayerConns(std::string &out_root) {arch.printLayerConns(out_root); }
     void outputLayerDepthIR(std::string &out_file) {arch.outputLayerDepthIR(out_file);}
     std::pair<uint64_t, uint64_t> getIrregularMetric() { return arch.getIrregularMetric();}
-
-    void setOutRoot(std::string &out_root) 
-    { arch.setOutRoot(out_root); }
+    uint64_t getMaxDepth() {return (uint64_t)arch.getmaxLayerDepth(); }
 
   protected:
     void loadArch(std::string &arch_file);
-    void loadArch2(std::string &arch_file); //Shihao's boost::ptree version
-    void loadWeights(std::string &weight_file);
-
-  protected:
-    void scanGroup(hid_t);
-    void extrWeights(hid_t);
 };
 }
 }
